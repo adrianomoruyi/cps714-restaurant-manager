@@ -1,3 +1,4 @@
+# Databricks runs package.json's build script before starting Flask.
 command:
   - python
   - app.py

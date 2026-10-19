@@ -9,6 +9,7 @@ src/restaurant-manager/
   app.py                 Flask API and serving the built React app
   database.py            Databricks connection and parameterized queries
   setup_database.py      Adds the login columns and dashboard assignment table
+  package.json           Databricks deployment build entry point
   app.yaml               Databricks app startup configuration
   frontend/
     src/App.jsx          Login, registration, and dashboard components
@@ -98,7 +99,24 @@ cd ..
 python app.py
 ```
 
-Open **http://127.0.0.1:8000**. Flask serves both the built React frontend and API. `app.yaml` still launches `python app.py`; when deploying, include the generated `frontend/dist/` directory in the uploaded app folder. Build output is ignored by Git and must be generated before deployment. `npm run preview` previews frontend assets only; use Flask to run the complete built app.
+Open **http://127.0.0.1:8000**. Flask serves both the built React frontend and API. `npm run preview` previews frontend assets only; use Flask to run the complete built app.
+
+## Deploy from GitHub to Databricks
+
+Set the app's Git source to this repository, branch `main`, with **`src/restaurant-manager` as the app directory** (the folder containing `app.yaml`, `requirements.txt`, and the deployment `package.json`).
+
+Databricks automatically performs these steps on deployment:
+
+1. Detects `package.json` in the app directory and installs Node dependencies.
+2. Installs the Python dependencies from `requirements.txt`.
+3. Runs `npm run build`. Our build script installs the frontend's locked dependencies, including Vite even when `NODE_ENV=production`, and generates `frontend/dist/`.
+4. Starts Flask using `python app.py`, as specified in `app.yaml`.
+
+**No local frontend build or committed build files are needed for GitHub deployments.** Build output remains ignored by Git. After syncing the latest commit, deploy/redeploy the app in Databricks. Database setup and app permissions are still required as described above.
+
+You can verify the same deployment build locally from `src/restaurant-manager` with `npm run build`.
+
+Reference: [Databricks deployment logic](https://docs.databricks.com/aws/en/dev-tools/databricks-apps/deploy).
 
 ## Checks
 
