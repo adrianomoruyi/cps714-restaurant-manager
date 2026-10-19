@@ -1,0 +1,7 @@
+command:
+  - python
+  - app.py
+
+permissions:
+  - sql_warehouse: af22ac66ae5c1302
+  - catalog: cps714

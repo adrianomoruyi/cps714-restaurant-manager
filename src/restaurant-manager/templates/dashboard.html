@@ -1,0 +1,43 @@
+{% extends 'base.html' %}
+{% block title %}Dashboard — Restaurant Manager{% endblock %}
+{% block content %}
+<h2 style="margin-bottom:20px;">Restaurant Tables</h2>
+<table>
+    <thead>
+        <tr>
+            <th>Table #</th>
+            <th>Capacity</th>
+            <th>Status</th>
+            <th>Server</th>
+            <th>Action</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for t in tables %}
+        <tr>
+            <td>{{ t.table_number }}</td>
+            <td>{{ t.capacity }}</td>
+            <td>
+                {% if t.status == 'available' %}
+                    <span class="badge badge-green">{{ t.status }}</span>
+                {% elif t.status == 'occupied' %}
+                    <span class="badge badge-red">{{ t.status }}</span>
+                {% else %}
+                    <span class="badge badge-yellow">{{ t.status }}</span>
+                {% endif %}
+            </td>
+            <td>{{ t.server_name or '—' }}</td>
+            <td>
+                {% if t.status != 'available' %}
+                <form method="POST" action="{{ url_for('clear_table', table_id=t.table_id) }}" class="inline">
+                    <button type="submit" class="btn btn-danger btn-sm">Clear Table</button>
+                </form>
+                {% endif %}
+            </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5">No tables found for this restaurant.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

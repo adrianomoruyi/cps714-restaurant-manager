@@ -1,0 +1,47 @@
+{% extends 'base.html' %}
+{% block title %}Register — Restaurant Manager{% endblock %}
+{% block content %}
+<div style="max-width:500px;margin:40px auto;">
+    <div class="card">
+        <h2 style="margin-bottom:20px;">Register New Employee</h2>
+        <form method="POST">
+            <div class="form-group">
+                <label>Restaurant</label>
+                <select name="restaurant_id" required>
+                    <option value="">— Select Restaurant —</option>
+                    {% for r in restaurants %}
+                    <option value="{{ r.restaurant_id }}">{{ r.name }} (ID: {{ r.restaurant_id }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>First Name</label>
+                <input type="text" name="first_name" required>
+            </div>
+            <div class="form-group">
+                <label>Last Name</label>
+                <input type="text" name="last_name" required>
+            </div>
+            <div class="form-group">
+                <label>Role</label>
+                <select name="role">
+                    <option value="server">Server</option>
+                    <option value="manager">Manager</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Username</label>
+                <input type="text" name="username" required>
+            </div>
+            <div class="form-group">
+                <label>Password</label>
+                <input type="password" name="password" required>
+            </div>
+            <button type="submit" class="btn btn-primary">Register</button>
+        </form>
+        <p style="margin-top:16px;font-size:14px;">
+            Already have an account? <a href="{{ url_for('login') }}">Login</a>
+        </p>
+    </div>
+</div>
+{% endblock %}
