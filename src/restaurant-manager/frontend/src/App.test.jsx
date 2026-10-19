@@ -44,8 +44,9 @@ describe('sprint pages', () => {
     expect(screen.queryByRole('button', { name: /clear|assign|order|delete/i })).toBeNull();
     expect(window.location.pathname).toBe('/dashboard');
     const request = fetch.mock.calls.find(([path]) => path === '/api/dashboard')[1];
-    expect(request.headers.get('Authorization')).toBe(`Basic ${btoa('alex:simple')}`);
-    expect(request.credentials).toBe('omit');
+    expect(request.headers.get('X-Restaurant-Authorization')).toBe(`Basic ${btoa('alex:simple')}`);
+    expect(request.headers.has('Authorization')).toBe(false);
+    expect(request.credentials).toBe('same-origin');
     expect(window.localStorage.length).toBe(0);
     expect(window.sessionStorage.length).toBe(0);
     await browser.click(screen.getByRole('button', { name: 'Log out' }));
@@ -77,6 +78,10 @@ describe('sprint pages', () => {
     expect(screen.getByLabelText('Username').value).toBe('alex');
     const payload = JSON.parse(fetch.mock.calls.find(([path]) => path === '/api/register')[1].body);
     expect(payload).toEqual({ first_name: 'Alex', last_name: 'Chen', restaurant_id: '2', role: 'server', username: 'alex', password: 'simple' });
+    for (const [, options] of fetch.mock.calls) {
+      expect(options.credentials).toBe('same-origin');
+      expect(options.headers.has('Authorization')).toBe(false);
+    }
   });
 
   it('requires login after a fresh visit to the dashboard', async () => {

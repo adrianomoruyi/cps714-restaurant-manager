@@ -30,7 +30,7 @@ The notebooks are retained unchanged as reference for future sprints. The runnin
 - `username` and `password` string columns on `employee`, in addition to its existing employee, restaurant, name, role, and status fields.
 - An employee with credentials and `status = 'active'`. Registering creates this account; the original sample employees have no credentials.
 
-For this classroom prototype, passwords remain plain text in the database as requested. React holds the current user and credentials only in memory. Dashboard requests send those credentials using an HTTP Basic authorization header, so Flask can look up the employee's restaurant without session cookies or tokens. Logging out clears React's state; refreshing or reopening the page requires logging in again. New usernames are stored in lowercase and login is case-insensitive for usernames. Passwords are matched exactly.
+For this classroom prototype, passwords remain plain text in the database as requested. React holds the current user and credentials only in memory. Dashboard requests send those credentials in a separate `X-Restaurant-Authorization` header so Flask can look up the employee's restaurant without creating app session cookies or tokens. The standard `Authorization` header is reserved for the Databricks proxy. API requests allow same-origin cookies so the platform can recognize your existing Databricks sign-in; these are managed by Databricks, not our employee login. Logging out clears React's state; refreshing or reopening the page requires logging in again. New usernames are stored in lowercase and login is case-insensitive for usernames. Passwords are matched exactly.
 
 ## Install and prepare the database
 

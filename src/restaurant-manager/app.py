@@ -5,6 +5,7 @@ import re
 from pathlib import Path
 
 from flask import Flask, jsonify, request, send_from_directory
+from werkzeug.datastructures import Authorization
 from werkzeug.exceptions import HTTPException
 
 from database import FULL_SCHEMA, run_sql
@@ -110,8 +111,9 @@ def create_app(config=None):
     @app.get('/api/dashboard')
     def dashboard():
         # React holds credentials in memory and sends them with this read-only request.
-        # There are no cookies, tokens, or persistent browser login storage in this sprint.
-        auth = request.authorization
+        # Use a separate header so the Databricks proxy can handle Authorization.
+        # Employee login still has no Flask session or persistent browser storage.
+        auth = Authorization.from_header(request.headers.get('X-Restaurant-Authorization'))
         user = authenticate(auth.username, auth.password) if auth and auth.type == 'basic' else None
         if not user:
             return jsonify(error='Please log in to continue.'), 401

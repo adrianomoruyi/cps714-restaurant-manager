@@ -22,7 +22,7 @@ class ApiTests(unittest.TestCase):
 
     def auth(self, username='alex', password='class-password'):
         encoded = base64.b64encode(f'{username}:{password}'.encode()).decode()
-        return {'Authorization': f'Basic {encoded}'}
+        return {'X-Restaurant-Authorization': f'Basic {encoded}'}
 
     def test_login_returns_user_without_cookie_or_password(self):
         self.sql.return_value = [USER]
@@ -95,6 +95,20 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(response.json['tables'], tables)
         self.assertEqual(self.sql.call_args.args[1], {'restaurant_id': 2})
         self.assertIn('no-store', response.headers['Cache-Control'])
+
+    def test_dashboard_keeps_platform_auth_separate_from_employee_credentials(self):
+        self.sql.side_effect = [[USER], []]
+        headers = {**self.auth(password='class:password'), 'Authorization': 'Bearer platform-token'}
+        response = self.client.get('/api/dashboard', headers=headers)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.sql.call_args_list[0].args[1],
+                         {'username': 'alex', 'password': 'class:password'})
+        self.assertNotIn('Set-Cookie', response.headers)
+
+    def test_platform_authorization_does_not_log_in_an_employee(self):
+        response = self.client.get('/api/dashboard', headers={'Authorization': 'Bearer platform-token'})
+        self.assertEqual(response.status_code, 401)
+        self.sql.assert_not_called()
 
     def test_restaurants_and_empty_dashboard(self):
         self.sql.return_value = []
