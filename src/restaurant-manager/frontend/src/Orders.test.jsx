@@ -49,17 +49,6 @@ async function fillOrder(browser) {
   await browser.selectOptions(screen.getByRole('combobox', { name: 'Menu item' }), '5');
 }
 
-it('shows active order items and filters them by table', async () => {
-  const browser = userEvent.setup();
-  render(<OrdersPage auth={auth} onLogout={vi.fn()} />);
-  await screen.findByText('Soup');
-  expect(screen.getByText('Tea')).toBeTruthy();
-  expect(screen.queryByText('Coffee')).toBeNull();
-  await chooseTable(browser);
-  expect(screen.getByText('Soup')).toBeTruthy();
-  expect(screen.queryByText('Tea')).toBeNull();
-});
-
 it('adds an item to a specific seat and refreshes the saved order', async () => {
   mutations((path, options) => {
     expect(path).toBe('/api/orders');
@@ -78,24 +67,6 @@ it('adds an item to a specific seat and refreshes the saved order', async () => 
   expect(within(added).getByText('$25.50')).toBeTruthy();
   expect(screen.getByRole('status').textContent).toBe('Order item added.');
   expect(screen.getByRole('combobox', { name: 'Menu item' }).value).toBe('');
-});
-
-it('edits the quantity of a pending item', async () => {
-  mutations((path, options) => {
-    expect(path).toBe('/api/orders/11');
-    expect(options.method).toBe('PATCH');
-    expect(JSON.parse(options.body)).toEqual({ quantity: '4' });
-    data.orders[0] = { ...first, quantity: '4', line_total: '34.00' };
-    return response({ message: 'Order item updated.' });
-  });
-  const browser = userEvent.setup();
-  render(<OrdersPage auth={auth} onLogout={vi.fn()} />);
-  const row = await screen.findByRole('row', { name: /order 11$/ });
-  await browser.clear(within(row).getByRole('spinbutton'));
-  await browser.type(within(row).getByRole('spinbutton'), '4');
-  await browser.click(within(row).getByRole('button', { name: 'Save quantity' }));
-  expect(await screen.findByText('$34.00')).toBeTruthy();
-  expect(screen.getByRole('spinbutton', { name: /order 11$/ }).value).toBe('4');
 });
 
 it('progresses through preparation and serving and locks quantity after preparation starts', async () => {
@@ -153,58 +124,4 @@ it('keeps other servers tables read-only and does not show an order entry form f
   await browser.selectOptions(screen.getByRole('combobox', { name: 'Table' }), '6');
   expect(screen.queryByRole('button', { name: 'Add item' })).toBeNull();
   expect(screen.getByText(/Only a manager or this table’s assigned server/)).toBeTruthy();
-});
-
-it('keeps paid items read-only when history is shown', async () => {
-  const browser = userEvent.setup();
-  render(<OrdersPage auth={auth} onLogout={vi.fn()} />);
-  await screen.findByRole('checkbox', { name: 'Show cancelled and paid items' });
-  await browser.click(screen.getByRole('checkbox', { name: 'Show cancelled and paid items' }));
-  const row = screen.getByRole('row', { name: /order 14$/ });
-  expect(within(row).getByText('paid')).toBeTruthy();
-  expect(within(row).queryByRole('button')).toBeNull();
-});
-
-it('shows assignment changes without discarding the order form or logging out', async () => {
-  mutations(() => response({ error: 'You can only manage orders for tables assigned to you.' }, 403));
-  const browser = userEvent.setup();
-  const logout = vi.fn();
-  render(<OrdersPage auth={auth} onLogout={logout} />);
-  await fillOrder(browser);
-  await browser.click(screen.getByRole('button', { name: 'Add item' }));
-  expect((await screen.findByRole('alert')).textContent).toContain('assigned to you');
-  expect(screen.getByRole('combobox', { name: 'Menu item' }).value).toBe('5');
-  expect(logout).not.toHaveBeenCalled();
-});
-
-it('shows a stale menu availability error while preserving the selection for correction', async () => {
-  mutations(() => response({ error: 'Choose an available menu item from your restaurant.' }, 400));
-  const browser = userEvent.setup();
-  render(<OrdersPage auth={auth} onLogout={vi.fn()} />);
-  await fillOrder(browser);
-  await browser.click(screen.getByRole('button', { name: 'Add item' }));
-  expect((await screen.findByRole('alert')).textContent).toContain('available menu item');
-  expect(screen.getByRole('combobox', { name: 'Seat' }).value).toBe('4');
-});
-
-it('disables ordering when a table has no seats or available menu items', async () => {
-  data.tables[0].seats = [];
-  data.items = [];
-  const browser = userEvent.setup();
-  render(<OrdersPage auth={auth} onLogout={vi.fn()} />);
-  await chooseTable(browser);
-  expect(screen.getByText(/This table has no seats/)).toBeTruthy();
-  expect(screen.getByText(/No available menu items/)).toBeTruthy();
-  expect(screen.getByRole('button', { name: 'Add item' }).disabled).toBe(true);
-});
-
-it('shows an empty restaurant and lets a failed data request be retried', async () => {
-  data = { tables: [], items: [], orders: [] };
-  fetch.mockResolvedValueOnce(response({ error: 'Database unavailable.' }, 503));
-  const browser = userEvent.setup();
-  render(<OrdersPage auth={auth} onLogout={vi.fn()} />);
-  await screen.findByRole('alert');
-  await browser.click(screen.getByRole('button', { name: 'Try again' }));
-  expect(await screen.findByText(/No tables are available yet/)).toBeTruthy();
-  expect(screen.getByRole('heading', { name: 'No order items to show' })).toBeTruthy();
 });

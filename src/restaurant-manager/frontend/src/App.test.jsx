@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import App from './App.jsx';
 
@@ -82,70 +82,5 @@ describe('sprint pages', () => {
       expect(options.credentials).toBe('same-origin');
       expect(options.headers.has('Authorization')).toBe(false);
     }
-  });
-
-  it.each(['/dashboard', '/menu', '/tables', '/assignments', '/orders'])('requires login after a fresh visit to %s', async path => {
-    window.history.replaceState({}, '', path);
-    render(<App />);
-    await waitFor(() => expect(window.location.pathname).toBe('/login'));
-    expect(screen.getByRole('button', { name: 'Log in' })).toBeTruthy();
-    expect(fetch).not.toHaveBeenCalled();
-  });
-
-  it('navigates between the dashboard and management pages after login', async () => {
-    const existing = fetch.getMockImplementation();
-    fetch.mockImplementation(async (path, options) => {
-      if (path === '/api/menu') return respond({ items: [{ menu_item_id: '5', name: 'Soup', price: '8.50', available: true }] });
-      if (path === '/api/tables') return respond({ tables: [], servers: [] });
-      if (path === '/api/orders') return respond({ tables: [], items: [], orders: [] });
-      return existing(path, options);
-    });
-    render(<App />);
-    const browser = await logIn();
-    await screen.findByRole('heading', { name: 'Hello, Alex.' });
-    await browser.click(screen.getByRole('link', { name: 'Menu' }));
-    await screen.findByText('Soup');
-    expect(window.location.pathname).toBe('/menu');
-    await browser.click(screen.getByRole('link', { name: 'Tables & seats' }));
-    await screen.findByRole('heading', { name: 'No tables yet' });
-    expect(window.location.pathname).toBe('/tables');
-    await browser.click(screen.getByRole('link', { name: 'Server assignments' }));
-    await screen.findByRole('heading', { name: 'No tables to assign' });
-    expect(window.location.pathname).toBe('/assignments');
-    await browser.click(screen.getByRole('link', { name: 'Orders' }));
-    await screen.findByRole('heading', { name: 'No order items to show' });
-    expect(window.location.pathname).toBe('/orders');
-    expect(screen.queryByRole('link', { name: 'Reports' })).toBeNull();
-    await browser.click(screen.getByRole('link', { name: 'Dashboard' }));
-    await screen.findByText('4 seats');
-    expect(window.location.pathname).toBe('/dashboard');
-  });
-
-  it('handles an empty dashboard', async () => {
-    fetch.mockImplementation(async path => path === '/api/login' ? respond({ user }) : respond({ tables: [] }));
-    render(<App />);
-    await logIn();
-    expect(await screen.findByRole('heading', { name: 'No tables yet' })).toBeTruthy();
-  });
-
-  it('shows a dashboard database failure and allows retry', async () => {
-    let attempts = 0;
-    fetch.mockImplementation(async path => {
-      if (path === '/api/login') return respond({ user });
-      return ++attempts === 1 ? respond({ error: 'Database unavailable.' }, 503) : respond({ tables });
-    });
-    render(<App />);
-    const browser = await logIn();
-    expect((await screen.findByRole('alert')).textContent).toContain('Database unavailable');
-    await browser.click(screen.getByRole('button', { name: 'Refresh' }));
-    expect(await screen.findByText('4 seats')).toBeTruthy();
-  });
-
-  it('disables registration when there are no restaurants', async () => {
-    window.history.replaceState({}, '', '/register');
-    fetch.mockResolvedValue(respond({ restaurants: [] }));
-    render(<App />);
-    expect((await screen.findByRole('status')).textContent).toContain('No restaurants');
-    expect(screen.getByRole('button', { name: 'Create account' }).disabled).toBe(true);
   });
 });

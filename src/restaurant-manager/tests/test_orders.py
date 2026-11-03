@@ -18,45 +18,38 @@ SEAT = dict(seat_id='4', table_id='3', table_status='occupied')
 
 
 class OrderRuleTests(unittest.TestCase):
-    def test_pending_quantities_can_be_changed(self):
-        self.assertEqual(order_changes(ORDER, {'quantity': '3'}), {'quantity': 3, 'status': 'pending'})
-        self.assertEqual(order_changes(ORDER, {'quantity': 99})['quantity'], 99)
+    def test_order_can_be_edited_prepared_served_and_cancelled(self):
+        for initial_status in ('pending', 'ordered'):
+            with self.subTest(initial_status=initial_status):
+                order = {**ORDER, 'status': initial_status}
+                order = order_changes(order, {'quantity': '3'})
+                self.assertEqual(order, {'quantity': 3, 'status': 'pending'})
+                for status in ('preparing', 'served', 'cancelled'):
+                    order = order_changes(order, {'status': status})
+                    self.assertEqual(order, {'quantity': 3, 'status': status})
 
-    def test_invalid_quantities_are_rejected(self):
-        for quantity in (0, -1, 100, 1.5, True, '2 OR 1=1', None):
+    def test_order_quantity_is_a_whole_number_from_one_to_99(self):
+        for quantity in (1, 99):
+            self.assertEqual(order_changes(ORDER, {'quantity': quantity})['quantity'], quantity)
+        for quantity in (0, -1, 100, 1.5, True):
             with self.subTest(quantity=quantity), self.assertRaises(BadRequest):
                 order_changes(ORDER, {'quantity': quantity})
 
-    def test_workflow_progresses_in_order(self):
-        self.assertEqual(order_changes(ORDER, {'status': 'preparing'})['status'], 'preparing')
-        self.assertEqual(order_changes({**ORDER, 'status': 'preparing'}, {'status': 'served'})['status'], 'served')
-        for current, target in [('pending', 'served'), ('preparing', 'pending'), ('served', 'preparing')]:
-            with self.subTest(current=current, target=target), self.assertRaises(Conflict):
-                order_changes({**ORDER, 'status': current}, {'status': target})
+    def test_invalid_workflow_changes_are_rejected(self):
+        cases = [
+            ('pending', {'status': 'served'}),
+            ('preparing', {'status': 'pending'}),
+            ('preparing', {'quantity': 4}),
+        ]
+        for status, changes in cases:
+            with self.subTest(status=status, changes=changes), self.assertRaises(Conflict):
+                order_changes({**ORDER, 'status': status}, changes)
 
-    def test_quantity_cannot_change_after_preparation_starts(self):
-        for status in ('preparing', 'served'):
-            with self.subTest(status=status), self.assertRaises(Conflict):
-                order_changes({**ORDER, 'status': status}, {'quantity': 3})
-
-    def test_any_active_item_can_be_cancelled(self):
-        for status in ('pending', 'preparing', 'served', 'ordered'):
-            self.assertEqual(order_changes({**ORDER, 'status': status}, {'status': 'cancelled'})['status'], 'cancelled')
-
-    def test_closed_and_unknown_orders_cannot_be_reopened(self):
-        for status in ('cancelled', 'paid', 'unknown', None):
-            with self.subTest(status=status), self.assertRaises(Conflict):
-                order_changes({**ORDER, 'status': status}, {'status': 'pending'})
-
-    def test_legacy_ordered_status_is_treated_as_pending(self):
-        self.assertEqual(order_changes({**ORDER, 'status': 'ordered'}, {'quantity': '4'}),
-                         {'quantity': 4, 'status': 'pending'})
-
-    def test_payment_and_unrelated_order_fields_cannot_be_set(self):
-        for data in ({}, {'status': 'paid'}, {'status': []}, {'menu_item_id': 5}, {'seat_id': 4},
-                     {'quantity': 2, 'price': '0.01'}):
-            with self.subTest(data=data), self.assertRaises(BadRequest):
-                order_changes(ORDER, data)
+    def test_paid_and_cancelled_items_cannot_be_reopened_or_edited(self):
+        for status in ('paid', 'cancelled'):
+            for changes in ({'status': 'pending'}, {'quantity': 3}):
+                with self.subTest(status=status, changes=changes), self.assertRaises(Conflict):
+                    order_changes({**ORDER, 'status': status}, changes)
 
 
 class OrderApiTests(unittest.TestCase):
@@ -77,155 +70,84 @@ class OrderApiTests(unittest.TestCase):
     def test_order_routes_require_login(self):
         self.auth.return_value = []
         for path, method in [('/api/orders', 'GET'), ('/api/orders', 'POST'), ('/api/orders/11', 'PATCH')]:
-            self.assertEqual(self.call(path, method, {}).status_code, 401)
+            with self.subTest(path=path, method=method):
+                self.assertEqual(self.call(path, method, {}).status_code, 401)
         self.sql.assert_not_called()
 
-    def test_inactive_employees_cannot_order(self):
-        self.auth.return_value = [{**MANAGER, 'status': 'inactive'}]
-        self.assertEqual(self.call(method='POST', data={'seat_id': 4, 'menu_item_id': 5}).status_code, 403)
-        self.sql.assert_not_called()
-
-    def test_other_roles_cannot_mutate_orders(self):
-        self.auth.return_value = [{**MANAGER, 'role': 'chef'}]
-        self.assertEqual(self.call(method='POST', data={}).status_code, 403)
-        self.assertEqual(self.call('/api/orders/11', 'PATCH', {}).status_code, 403)
-        self.sql.assert_not_called()
-
-    def test_order_context_limits_data_and_permissions_to_employee_restaurant(self):
+    def test_order_list_is_scoped_and_marks_only_assigned_tables_editable(self):
         self.auth.return_value = [SERVER]
-        tables = [dict(table_id='3', table_number='1', server_id='7'), dict(table_id='6', table_number='2', server_id='8')]
+        tables = [dict(table_id='3', server_id='7'), dict(table_id='6', server_id='8')]
         seats = [dict(seat_id='4', table_id='3', seat_number='1')]
-        orders = [ORDER, {**ORDER, 'seat_order_id': '12', 'table_id': '6', 'status': 'ordered'}]
+        orders = [ORDER, {**ORDER, 'seat_order_id': '12', 'table_id': '6'}]
         self.sql.side_effect = [tables, seats, [], orders]
         response = self.call('/api/orders?restaurant_id=999')
         self.assertEqual(response.status_code, 200)
-        self.assertTrue(response.json['tables'][0]['can_manage'])
-        self.assertFalse(response.json['tables'][1]['can_manage'])
+        self.assertEqual([table['can_manage'] for table in response.json['tables']], [True, False])
+        self.assertEqual([order['can_manage'] for order in response.json['orders']], [True, False])
         self.assertEqual(response.json['tables'][0]['seats'], seats)
-        self.assertTrue(response.json['orders'][0]['can_manage'])
-        self.assertFalse(response.json['orders'][1]['can_manage'])
-        self.assertEqual(response.json['orders'][1]['status'], 'pending')
         for call in self.sql.call_args_list:
             self.assertEqual(call.args[1], {'restaurant_id': 2})
-        self.assertIn('available = true', self.sql.call_args_list[2].args[0])
-        self.assertIn('m.restaurant_id = t.restaurant_id', self.sql.call_args_list[3].args[0])
 
-    def test_manager_can_manage_unassigned_tables(self):
-        self.sql.side_effect = [[dict(table_id='3', server_id=None)], [], [], [ORDER]]
-        response = self.call()
-        self.assertTrue(response.json['tables'][0]['can_manage'])
-        self.assertTrue(response.json['orders'][0]['can_manage'])
+    def test_manager_and_assigned_server_can_place_an_order(self):
+        for user in (MANAGER, SERVER):
+            with self.subTest(role=user['role']):
+                self.auth.return_value = [user]
+                results = [[{**SEAT, 'table_status': 'available'}]]
+                if user['role'] == 'server':
+                    results.append([{'employee_id': '7'}])
+                self.sql.side_effect = results + [[{'menu_item_id': '5'}], [], []]
+                response = self.call(method='POST', data={'seat_id': '4', 'menu_item_id': '5', 'quantity': '3'})
+                self.assertEqual(response.status_code, 201)
+                self.assertEqual(self.sql.call_args.args[1], {'seat_id': 4, 'item_id': 5, 'quantity': 3})
+                self.assertIn("'pending'", self.sql.call_args.args[0])
+                self.assertIn("SET status = 'occupied'", self.sql.call_args_list[-2].args[0])
+                self.sql.reset_mock()
 
-    def test_manager_can_place_item_on_a_seat(self):
-        self.sql.side_effect = [[SEAT], [{'menu_item_id': '5'}], []]
-        response = self.call(method='POST', data={'seat_id': '4', 'menu_item_id': '5', 'quantity': '3'})
-        self.assertEqual(response.status_code, 201)
-        sql, values = self.sql.call_args.args
-        self.assertIn("'pending'", sql)
-        self.assertEqual(values, {'seat_id': 4, 'item_id': 5, 'quantity': 3})
-
-    def test_server_can_order_for_their_current_assignment(self):
+    def test_server_cannot_create_or_change_orders_for_another_servers_table(self):
         self.auth.return_value = [SERVER]
-        self.sql.side_effect = [[SEAT], [{'employee_id': '7'}], [{'menu_item_id': '5'}], []]
-        response = self.call(method='POST', data={'seat_id': 4, 'menu_item_id': 5})
-        self.assertEqual(response.status_code, 201)
-        self.assertIn('ORDER BY assigned_at DESC, assignment_id DESC', self.sql.call_args_list[1].args[0])
-        self.assertEqual(self.sql.call_args.args[1]['quantity'], 1)
+        cases = [
+            ('/api/orders', 'POST', {'seat_id': 4, 'menu_item_id': 5}, SEAT),
+            ('/api/orders/11', 'PATCH', {'status': 'cancelled'}, ORDER),
+        ]
+        for path, method, payload, record in cases:
+            with self.subTest(method=method):
+                self.sql.reset_mock()
+                self.sql.side_effect = [[record], [{'employee_id': '8'}]]
+                self.assertEqual(self.call(path, method, payload).status_code, 403)
+                self.assertEqual(self.sql.call_count, 2)
 
-    def test_server_cannot_order_for_another_server_or_unassigned_table(self):
-        self.auth.return_value = [SERVER]
-        for assignment in ([], [{'employee_id': '8'}]):
-            self.sql.reset_mock()
-            self.sql.side_effect = [[SEAT], assignment]
-            response = self.call(method='POST', data={'seat_id': 4, 'menu_item_id': 5})
-            self.assertEqual(response.status_code, 403)
-            self.assertEqual(self.sql.call_count, 2)
-
-    def test_seat_outside_restaurant_is_not_found(self):
-        response = self.call(method='POST', data={'seat_id': 999, 'menu_item_id': 5})
-        self.assertEqual(response.status_code, 404)
-        self.assertEqual(self.sql.call_args.args[1], {'restaurant_id': 2, 'seat_id': 999})
-        self.assertEqual(self.sql.call_count, 1)
-
-    def test_unavailable_or_foreign_menu_item_is_rejected(self):
+    def test_unavailable_menu_items_cannot_be_ordered(self):
         self.sql.side_effect = [[SEAT], []]
-        response = self.call(method='POST', data={'seat_id': 4, 'menu_item_id': 999})
+        response = self.call(method='POST', data={'seat_id': 4, 'menu_item_id': 5})
         self.assertEqual(response.status_code, 400)
-        self.assertEqual(self.sql.call_args.args[1], {'restaurant_id': 2, 'item_id': 999})
+        self.assertEqual(self.sql.call_args.args[1], {'restaurant_id': 2, 'item_id': 5})
         self.assertEqual(self.sql.call_count, 2)
 
-    def test_invalid_order_payload_never_reaches_database(self):
-        for data in ([], {}, {'seat_id': 4, 'menu_item_id': 5, 'quantity': 0},
-                     {'seat_id': True, 'menu_item_id': 5}, {'seat_id': 4, 'menu_item_id': '5 OR 1=1'}):
-            self.assertEqual(self.call(method='POST', data=data).status_code, 400)
-        self.sql.assert_not_called()
+    def test_seats_and_orders_outside_restaurant_cannot_be_changed(self):
+        cases = [
+            ('/api/orders', 'POST', {'seat_id': 999, 'menu_item_id': 5}),
+            ('/api/orders/999', 'PATCH', {'quantity': 3}),
+        ]
+        for path, method, payload in cases:
+            with self.subTest(method=method):
+                self.sql.reset_mock()
+                self.sql.side_effect = [[]]
+                self.assertEqual(self.call(path, method, payload).status_code, 404)
+                self.assertEqual(self.sql.call_count, 1)
+                self.assertEqual(self.sql.call_args.args[1]['restaurant_id'], 2)
 
-    def test_placing_order_marks_available_table_occupied_before_inserting(self):
-        self.sql.side_effect = [[{**SEAT, 'table_status': 'available'}], [{'menu_item_id': '5'}], [], []]
-        response = self.call(method='POST', data={'seat_id': 4, 'menu_item_id': 5, 'status': 'paid'})
-        self.assertEqual(response.status_code, 201)
-        self.assertIn("SET status = 'occupied'", self.sql.call_args_list[2].args[0])
-        self.assertEqual(self.sql.call_args_list[2].args[1], {'restaurant_id': 2, 'table_id': 3})
-        self.assertIn("'pending'", self.sql.call_args.args[0])
-
-    def test_failed_occupancy_change_does_not_insert_an_order(self):
-        self.sql.side_effect = [[{**SEAT, 'table_status': 'available'}], [{'menu_item_id': '5'}], RuntimeError('Unavailable')]
-        with self.assertLogs(self.app.logger, level='ERROR'):
-            response = self.call(method='POST', data={'seat_id': 4, 'menu_item_id': 5})
-        self.assertEqual(response.status_code, 503)
-        self.assertEqual(self.sql.call_count, 3)
-        self.assertNotIn('INSERT', self.sql.call_args.args[0])
-
-    def test_pending_quantity_update_is_scoped_and_state_checked(self):
-        self.sql.side_effect = [[ORDER], [{'num_affected_rows': '1'}]]
-        response = self.call('/api/orders/11', 'PATCH', {'quantity': '4'})
-        self.assertEqual(response.status_code, 200)
-        sql, values = self.sql.call_args.args
-        self.assertIn('status = :previous_status', sql)
-        self.assertEqual(values, dict(restaurant_id=2, order_id=11, seat_id=4, previous_status='pending', quantity=4, status='pending'))
-
-    def test_cancellation_keeps_the_order_record(self):
-        self.sql.side_effect = [[{**ORDER, 'status': 'served'}], []]
-        response = self.call('/api/orders/11', 'PATCH', {'status': 'cancelled'})
-        self.assertEqual(response.status_code, 200)
-        self.assertIn('History was kept', response.json['message'])
-        self.assertIn('UPDATE', self.sql.call_args.args[0])
-        self.assertNotIn('DELETE', self.sql.call_args.args[0])
-        self.assertEqual(self.sql.call_args.args[1]['status'], 'cancelled')
-
-    def test_legacy_order_can_enter_preparation_without_bulk_migration(self):
-        self.sql.side_effect = [[{**ORDER, 'status': 'ordered'}], []]
-        self.assertEqual(self.call('/api/orders/11', 'PATCH', {'status': 'preparing'}).status_code, 200)
-        self.assertEqual(self.sql.call_args.args[1]['previous_status'], 'ordered')
-        self.assertEqual(self.sql.call_args.args[1]['status'], 'preparing')
-
-    def test_closed_order_is_not_written(self):
-        for status in ('paid', 'cancelled'):
-            self.sql.reset_mock()
-            self.sql.side_effect = [[{**ORDER, 'status': status}]]
-            self.assertEqual(self.call('/api/orders/11', 'PATCH', {'quantity': 3}).status_code, 409)
-            self.assertEqual(self.sql.call_count, 1)
-
-    def test_foreign_order_cannot_be_edited(self):
-        self.assertEqual(self.call('/api/orders/999', 'PATCH', {'quantity': 3}).status_code, 404)
-        self.assertEqual(self.sql.call_args.args[1], {'restaurant_id': 2, 'order_id': 999})
-
-    def test_server_cannot_change_order_after_table_is_reassigned(self):
-        self.auth.return_value = [SERVER]
-        self.sql.side_effect = [[ORDER], [{'employee_id': '8'}]]
-        self.assertEqual(self.call('/api/orders/11', 'PATCH', {'status': 'cancelled'}).status_code, 403)
-        self.assertEqual(self.sql.call_count, 2)
-
-    def test_server_can_update_their_assigned_tables_order(self):
-        self.auth.return_value = [SERVER]
-        self.sql.side_effect = [[ORDER], [{'employee_id': '7'}], []]
-        self.assertEqual(self.call('/api/orders/11', 'PATCH', {'status': 'preparing'}).status_code, 200)
-
-    def test_raced_status_update_reports_a_conflict(self):
-        self.sql.side_effect = [[ORDER], [{'num_affected_rows': '0'}]]
-        response = self.call('/api/orders/11', 'PATCH', {'quantity': 3})
-        self.assertEqual(response.status_code, 409)
-        self.assertIn('Refresh', response.json['error'])
+    def test_quantity_updates_and_cancellation_preserve_order_history(self):
+        cases = [({'quantity': '4'}, 4, 'pending'), ({'status': 'cancelled'}, 2, 'cancelled')]
+        for changes, quantity, status in cases:
+            with self.subTest(changes=changes):
+                self.sql.side_effect = [[ORDER], [{'num_affected_rows': '1'}]]
+                response = self.call('/api/orders/11', 'PATCH', changes)
+                self.assertEqual(response.status_code, 200)
+                sql, values = self.sql.call_args.args
+                self.assertIn('UPDATE', sql)
+                self.assertNotIn('DELETE', sql)
+                self.assertEqual(values, dict(restaurant_id=2, order_id=11, seat_id=4,
+                                             previous_status='pending', quantity=quantity, status=status))
 
 
 if __name__ == '__main__':

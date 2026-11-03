@@ -158,7 +158,7 @@ You can verify the same deployment build locally from `src/restaurant-manager` w
 
 Reference: [Databricks deployment logic](https://docs.databricks.com/aws/en/dev-tools/databricks-apps/deploy).
 
-## Checks
+## Core tests
 
 From the repository root with the virtual environment active:
 
@@ -166,20 +166,25 @@ From the repository root with the virtual environment active:
 python -m unittest discover -s src/restaurant-manager/tests -v
 cd src/restaurant-manager/frontend
 npm test
-npm run build
 ```
 
-The tests cover existing sprint functionality; no future-sprint features are needed to run them.
+The suite focuses on the implemented features and the rules that protect their data. It includes pure unit tests for order rules and the database/API helpers, Flask route tests with mocked database calls, and a few React component tests for the main user workflows.
 
-| Test file | Scope |
-| --- | --- |
-| `tests/test_database.py` | Unit tests for SQL parameter binding, result chunks, null values, truncated results, and connection failures |
-| `tests/test_api.py` | Flask route tests for registration, login, and dashboard access, plus database setup tests |
-| `tests/test_management.py` | Role permissions, restaurant isolation, menu validation, seat generation, deletion guards, and server assignment tests |
-| `tests/test_orders.py` | Order workflow rules, quantities, cancellation, legacy statuses, restaurant isolation, and assigned-server permissions |
-| `frontend/src/api.test.js` | Unit tests for HTTP requests, platform authentication, Unicode credentials, cancellation, and invalid responses |
-| `frontend/src/App.test.jsx` | React component tests for registration, login, logout, and dashboard loading, errors, and empty states |
-| `frontend/src/Management.test.jsx` | Menu/table forms, assignment controls, role visibility, confirmation, and failure recovery tests |
-| `frontend/src/Orders.test.jsx` | Order entry, quantity edits, preparation/serving, cancellation history, table filtering, and failure recovery |
+| Test file | Tests | What they demonstrate |
+| --- | ---: | --- |
+| `tests/test_api.py` | 9 | Login success/failure, registration and duplicate/invalid accounts, dashboard access, restaurant isolation, and a friendly database failure |
+| `tests/test_database.py` | 3 | Bound SQL parameters, complete result retrieval, and rejection of failed or truncated queries |
+| `tests/test_management.py` | 12 | Manager-only changes, server viewing, menu creation/availability, table seating, assignments, restaurant boundaries, and order-history protection |
+| `tests/test_orders.py` | 11 | Valid/invalid order transitions, quantity limits, closed orders, authenticated ordering, assigned-server permissions, available menu items, and cancellation without deletion |
+| `frontend/src/api.test.js` | 2 | Regression coverage for Databricks sign-in cookies and a clear error when the platform denies access |
+| `frontend/src/App.test.jsx` | 3 | Registration, failed login, and successful login → dashboard → logout |
+| `frontend/src/Management.test.jsx` | 4 | Menu creation, capacity changes, assignment/removal, and server view access in the UI |
+| `frontend/src/Orders.test.jsx` | 4 | Seat-level ordering, preparation/serving, cancellation history, and read-only access to another server's table |
 
-The Python tests use `unittest`; frontend tests use Vitest and React Testing Library. Database and HTTP calls are mocked, so tests need no Databricks credentials and do not access or change the live database. These local tests do not replace a check of the deployed app's permissions and database connection. As later sprints add features, add tests for each feature's expected behavior and failure cases.
+There are **48 core tests: 35 Python and 13 frontend**. Closely related validation/permission cases use small data-driven tables so the same test can cover both allowed and rejected inputs. Each test targets a feature rule, access boundary, or failure with user-visible consequences.
+
+The Python tests use `unittest`; frontend tests use Vitest and React Testing Library. Database and HTTP calls are mocked, so tests need no Databricks credentials and do not access or change the live database. They demonstrate application logic and UI behavior; live SQL execution, Databricks permissions, and deployment connectivity still need a deployed check.
+
+For a class demonstration, run both commands above, then show three representative tests: `test_all_mutations_require_manager_role`, `test_restaurant_boundaries_apply_to_menu_tables_and_servers`, and `test_order_can_be_edited_prepared_served_and_cancelled`. Together they explain role permissions, restaurant isolation, and the main business workflow.
+
+`npm run build` from the frontend directory is a separate deployment/build check, rather than a unit test.

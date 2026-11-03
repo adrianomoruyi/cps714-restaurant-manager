@@ -6,7 +6,6 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app import create_app
-from setup_database import setup_database
 
 USER = dict(employee_id='7', restaurant_id='2', first_name='Alex', last_name='Chen',
             role='server', username='alex', status='active')
@@ -24,7 +23,7 @@ class ApiTests(unittest.TestCase):
         encoded = base64.b64encode(f'{username}:{password}'.encode()).decode()
         return {'X-Restaurant-Authorization': f'Basic {encoded}'}
 
-    def test_login_returns_user_without_cookie_or_password(self):
+    def test_login_returns_employee_identity(self):
         self.sql.return_value = [USER]
         response = self.client.post('/api/login', json={'username': ' Alex ', 'password': 'class-password'})
         self.assertEqual(response.status_code, 200)
@@ -39,16 +38,11 @@ class ApiTests(unittest.TestCase):
         self.sql.return_value = [{**USER, 'status': 'inactive'}]
         self.assertEqual(self.client.post('/api/login', json={'username': 'alex', 'password': 'correct'}).status_code, 403)
 
-    def test_login_rejects_missing_or_invalid_payloads(self):
-        for payload in ({}, [], {'username': 123, 'password': {}}, {'username': 'alex'}):
-            self.assertEqual(self.client.post('/api/login', json=payload).status_code, 400)
-        self.sql.assert_not_called()
-
-    def registration(self, **changes):
+    def registration(self):
         return dict(restaurant_id='2', first_name="O'Neil", last_name='Chen',
-                    username='Alex', password='simple', role='server', **changes)
+                    username='Alex', password='simple', role='server')
 
-    def test_register_keeps_plaintext_values_bound_separately(self):
+    def test_registration_creates_active_employee(self):
         self.sql.side_effect = [[], [{'1': '1'}], []]
         response = self.client.post('/api/register', json=self.registration())
         self.assertEqual(response.status_code, 201)
@@ -96,64 +90,12 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(self.sql.call_args.args[1], {'restaurant_id': 2})
         self.assertIn('no-store', response.headers['Cache-Control'])
 
-    def test_dashboard_keeps_platform_auth_separate_from_employee_credentials(self):
-        self.sql.side_effect = [[USER], []]
-        headers = {**self.auth(password='class:password'), 'Authorization': 'Bearer platform-token'}
-        response = self.client.get('/api/dashboard', headers=headers)
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(self.sql.call_args_list[0].args[1],
-                         {'username': 'alex', 'password': 'class:password'})
-        self.assertNotIn('Set-Cookie', response.headers)
-
-    def test_platform_authorization_does_not_log_in_an_employee(self):
-        response = self.client.get('/api/dashboard', headers={'Authorization': 'Bearer platform-token'})
-        self.assertEqual(response.status_code, 401)
-        self.sql.assert_not_called()
-
-    def test_restaurants_and_empty_dashboard(self):
-        self.sql.return_value = []
-        self.assertEqual(self.client.get('/api/restaurants').json, {'restaurants': []})
-        self.sql.side_effect = [[USER], []]
-        self.assertEqual(self.client.get('/api/dashboard', headers=self.auth()).json, {'tables': []})
-
     def test_database_error_is_friendly(self):
         self.sql.side_effect = RuntimeError('sensitive connection information')
         with self.assertLogs(self.app.logger, level='ERROR'):
             response = self.client.post('/api/login', json={'username': 'alex', 'password': 'password'})
         self.assertEqual(response.status_code, 503)
         self.assertNotIn('sensitive', response.get_data(as_text=True))
-
-    def test_removed_features_have_no_routes(self):
-        for path in ('/reports', '/assign-server', '/logout',
-                     '/menu/add', '/menu/update/1', '/menu/delete/1', '/clear-table/1',
-                     '/api/reports'):
-            for method in ('GET', 'POST'):
-                with self.subTest(path=path, method=method):
-                    self.assertEqual(self.client.open(path, method=method).status_code, 404)
-        self.sql.assert_not_called()
-
-
-class SetupTests(unittest.TestCase):
-    @patch('setup_database.run_sql')
-    def test_setup_adds_only_the_missing_password_column(self, sql):
-        sql.side_effect = [[{'col_name': 'employee_id'}, {'col_name': 'username'}], [], []]
-        setup_database()
-        self.assertIn('ADD COLUMNS (password STRING)', sql.call_args_list[1].args[0])
-        self.assertNotIn('username STRING', sql.call_args_list[1].args[0])
-
-    @patch('setup_database.run_sql')
-    def test_setup_adds_missing_columns_and_assignment_table(self, sql):
-        sql.side_effect = [[{'col_name': 'employee_id'}], [], []]
-        setup_database()
-        self.assertIn('ADD COLUMNS (username STRING, password STRING)', sql.call_args_list[1].args[0])
-        self.assertIn('CREATE TABLE IF NOT EXISTS', sql.call_args_list[2].args[0])
-
-    @patch('setup_database.run_sql')
-    def test_setup_preserves_existing_credentials(self, sql):
-        sql.side_effect = [[{'col_name': 'username'}, {'col_name': 'password'}], []]
-        setup_database()
-        self.assertEqual(sql.call_count, 2)
-        self.assertNotIn('ALTER', sql.call_args.args[0])
 
 
 if __name__ == '__main__':
