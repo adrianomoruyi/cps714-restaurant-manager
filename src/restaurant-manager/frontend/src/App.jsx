@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from './api.js';
+import { AssignmentsPage, MenuPage, TablesPage } from './Management.jsx';
+
+const STAFF_PAGES = ['/dashboard', '/menu', '/tables', '/assignments'];
 
 function Mark() {
   return <span className="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M5 3v5a3 3 0 0 0 6 0V3M8 3v18M19 21V3c-4 2-5 7-3 10h3" /></svg></span>;
@@ -135,11 +138,7 @@ function Dashboard({ auth, onLogout }) {
     { label: 'Reserved', value: tables.filter(table => table.status === 'reserved').length, color: 'purple' },
   ];
 
-  return <div className="dashboard-shell">
-    <header className="topbar"><a className="brand" href="/dashboard" onClick={event => event.preventDefault()}><Mark />Restaurant Manager</a>
-      <div className="account"><div className="account-info"><strong>{auth.user.first_name} {auth.user.last_name}</strong><span>{auth.user.role}</span></div><span className="avatar" aria-hidden="true">{auth.user.first_name?.charAt(0)}</span><button className="button secondary" onClick={() => onLogout()}>Log out</button></div>
-    </header>
-    <main className="dashboard">
+  return <main className="dashboard">
       <div className="dashboard-heading"><div><div className="eyebrow">YOUR RESTAURANT AT A GLANCE</div><h1>Hello, {auth.user.first_name}.</h1><p>Here’s what’s happening on the floor.</p></div><span className="page-label"><span className="dot" />Dashboard</span></div>
       <section className="stats" aria-label="Table overview">{stats.map(stat => <div className={`stat ${stat.color}`} key={stat.label}><span>{stat.label}</span><strong>{loading || error ? '—' : stat.value}</strong><span className="stat-line" /></div>)}</section>
       <section className="table-panel" aria-labelledby="tables-heading" aria-busy={loading}>
@@ -151,8 +150,7 @@ function Dashboard({ auth, onLogout }) {
         <div className="panel-footer">Restaurant overview<span>Read only</span></div>
       </section>
       <footer className="dashboard-footer">Restaurant Manager<span>A little clarity for a busy floor.</span></footer>
-    </main>
-  </div>;
+    </main>;
 }
 
 export default function App() {
@@ -173,8 +171,8 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!auth && (page === '/dashboard' || page === '/')) navigate('/login', true);
-    if (auth && page !== '/dashboard') navigate('/dashboard', true);
+    if (!auth && page !== '/login' && page !== '/register') navigate('/login', true);
+    if (auth && !STAFF_PAGES.includes(page)) navigate('/dashboard', true);
   }, [auth, page]);
 
   // A stable callback keeps unrelated renders from restarting dashboard requests.
@@ -185,7 +183,16 @@ export default function App() {
     setPage('/login');
   }, []);
 
-  if (auth) return <Dashboard auth={auth} onLogout={logout} />;
+  if (auth) return <div className="dashboard-shell">
+    <header className="topbar"><a className="brand" href="/dashboard" onClick={event => { event.preventDefault(); navigate('/dashboard'); }}><Mark />Restaurant Manager</a>
+      <div className="account"><div className="account-info"><strong>{auth.user.first_name} {auth.user.last_name}</strong><span>{auth.user.role}</span></div><span className="avatar" aria-hidden="true">{auth.user.first_name?.charAt(0)}</span><button className="button secondary" onClick={() => logout()}>Log out</button></div>
+    </header>
+    <nav className="workspace-nav" aria-label="Restaurant navigation">{[['/dashboard', 'Dashboard'], ['/menu', 'Menu'], ['/tables', 'Tables & seats'], ['/assignments', 'Server assignments']].map(([path, label]) => <a key={path} href={path} aria-current={page === path ? 'page' : undefined} onClick={event => { event.preventDefault(); navigate(path); }}>{label}</a>)}</nav>
+    {page === '/menu' ? <MenuPage auth={auth} onLogout={logout} />
+      : page === '/tables' ? <TablesPage auth={auth} onLogout={logout} />
+      : page === '/assignments' ? <AssignmentsPage auth={auth} onLogout={logout} />
+      : <Dashboard auth={auth} onLogout={logout} />}
+  </div>;
   return <div className="auth-shell">
     <aside className="welcome-panel"><div className="brand"><Mark />Restaurant Manager</div><div className="welcome-copy"><div className="eyebrow">GOOD SERVICE STARTS HERE</div><h2>Your team.<br />Your tables.<br /><em>All together.</em></h2><p>A clear view of your restaurant,<br />so you can focus on your guests.</p><div className="floor-art" aria-hidden="true"><div className="floor-table one"><span /><span /><b>01</b><span /><span /></div><div className="floor-table two"><span /><span /><b>02</b><span /><span /></div><div className="floor-table three"><span /><span /><b>03</b><span /><span /></div></div></div><span className="welcome-footer">A little clarity for a busy floor.</span></aside>
     <main className="auth-main"><div className="mobile-brand brand"><Mark />Restaurant Manager</div><div className="auth-form">

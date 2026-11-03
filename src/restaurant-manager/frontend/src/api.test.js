@@ -41,3 +41,43 @@ it('reports non-JSON server errors with their HTTP status', async () => {
   })));
   await expect(api('/restaurants')).rejects.toMatchObject({ status: 502, message: expect.stringContaining('HTTP 502') });
 });
+
+it('sends Unicode passwords intact without replacing platform authorization', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ tables: [] }) })));
+  await api('/dashboard', {
+    credentials: { username: 'alex', password: 'café:餐厅' },
+    headers: { Authorization: 'Bearer platform-token' },
+  });
+  const { headers } = fetch.mock.calls[0][1];
+  const encoded = headers.get('X-Restaurant-Authorization').slice('Basic '.length);
+  const decoded = new TextDecoder().decode(Uint8Array.from(atob(encoded), character => character.charCodeAt(0)));
+  expect(decoded).toBe('alex:café:餐厅');
+  expect(headers.get('Authorization')).toBe('Bearer platform-token');
+});
+
+it('preserves cancellation so leaving a page does not produce a false error', async () => {
+  const controller = new AbortController();
+  controller.abort();
+  const aborted = new DOMException('The operation was aborted.', 'AbortError');
+  vi.stubGlobal('fetch', vi.fn(async (_path, { signal }) => {
+    if (signal.aborted) throw aborted;
+    throw new Error('The request should have been aborted');
+  }));
+  await expect(api('/restaurants', { signal: controller.signal })).rejects.toBe(aborted);
+});
+
+it.each([null, ['unexpected array'], 'unexpected string'])(
+  'rejects an invalid successful API payload: %j', async payload => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => payload })));
+    await expect(api('/restaurants')).rejects.toMatchObject({ status: 502 });
+  },
+);
+
+it('handles structured platform errors without displaying an object as a message', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => ({
+    ok: false, status: 403, json: async () => ({ error: { code: 'FORBIDDEN', message: 'Platform denied access' } }),
+  })));
+  await expect(api('/restaurants')).rejects.toMatchObject({
+    status: 403, message: expect.stringContaining('Databricks sign-in'),
+  });
+});

@@ -1,18 +1,23 @@
 # CPS714 Restaurant Manager
 
-The current sprint includes **registration, login, logout, and a read-only table dashboard**. The frontend uses React and Vite; Flask provides a small JSON API backed by Databricks SQL. Menu management, orders, table clearing, server assignment, and reports are outside this sprint and have no web pages or API routes.
+The current app includes **registration, login, logout, a read-only dashboard, menu management, table/seat management, and server assignments**. The frontend uses React and Vite; Flask provides a JSON API backed by Databricks SQL. Managers make management changes; servers can view the menu, floor layout, and assignments.
+
+This is the first batch of the expanded scope. Orders, checkout (together or per seat), manager discounts, and employee/restaurant management are planned for later batches. Reports are excluded.
 
 ## Structure
 
 ```text
 src/restaurant-manager/
   app.py                 Flask API and serving the built React app
+  management.py          Menu, table/seat, and assignment API with role checks
   database.py            Databricks connection and parameterized queries
   setup_database.py      Adds the login columns and dashboard assignment table
   package.json           Databricks deployment build entry point
   app.yaml               Databricks app startup configuration
   frontend/
     src/App.jsx          Login, registration, and dashboard components
+    src/Management.jsx   Menu, tables/seats, and assignment pages
+    src/useRestaurantResource.js  Shared loading and saving behavior
     src/api.js           Requests to the Flask API
     src/styles.css       Responsive page styles
     vite.config.js       Local /api proxy to Flask on port 8000
@@ -21,7 +26,25 @@ src/querying/            Original database and CRUD notebooks (reference)
 src/helpers/             Original operations and checkout notebook (reference)
 ```
 
-The notebooks are retained unchanged as reference for future sprints. The running app does not import them.
+The notebooks are retained unchanged as reference. The running app adapts their menu, table, and assignment logic into Flask endpoints; it does not execute the notebooks.
+
+## Management features and permissions
+
+| Feature | Manager | Server |
+| --- | --- | --- |
+| Dashboard, menu, tables/seats, server assignments | View | View |
+| Menu items | Add, edit, change availability, delete unused items | View |
+| Tables and seats | Create, resize, change table number/status, delete unused tables | View |
+| Server assignments | Assign, reassign, remove | View |
+
+Permissions are checked in Flask on every request, using the current employee record. All reads and changes are limited to the employee's restaurant. The classroom registration form still supports choosing manager or server, as before.
+
+- Prices are in CAD and support up to two decimal places. Menu items with existing orders cannot be deleted; mark them unavailable instead.
+- Tables have a unique number within a restaurant and a capacity of 1–30. Creating or editing capacity generates numbered seats from 1 to capacity. Reducing capacity removes the highest numbered seats only when the table is available and those seats have no order history. Existing seats within capacity keep their IDs.
+- Only available tables without orders or active assignments can be deleted. A table with active orders or an assignment cannot be marked available.
+- Assigning a server marks a table occupied. Only active servers from the same restaurant can be assigned. Reassignment retires the previous active assignment. Removing an assignment preserves table status; mark it available separately when service is finished.
+
+These features use the original database tables. If starting from a new database, run the creation/population notebooks and `setup_database.py` as described below. The app identity needs SELECT access plus INSERT, UPDATE, and DELETE access for the management tables. Multi-step table and assignment changes use separate Databricks SQL statements; they do not provide transactions across tables.
 
 ## Login requirements
 
@@ -85,7 +108,7 @@ npm ci
 npm run dev
 ```
 
-Open **http://127.0.0.1:5173**, register an account, and log in. Vite proxies API calls to Flask on port 8000. The dashboard shows tables, capacity, status, and assigned servers for the logged-in employee's restaurant. An empty restaurant shows an empty state; creating tables is outside this sprint.
+Open **http://127.0.0.1:5173**, register an account, and log in. Vite proxies API calls to Flask on port 8000. The dashboard shows tables, capacity, status, and assigned servers for the logged-in employee's restaurant. Use the navigation to open Menu, Tables & seats, and Server assignments. Register or log in as a manager to make changes; use a server account to verify view access.
 
 ## Run the built app
 
@@ -129,4 +152,15 @@ npm test
 npm run build
 ```
 
-Tests mock database responses; they do not access or change the live Databricks database.
+The tests cover existing sprint functionality; no future-sprint features are needed to run them.
+
+| Test file | Scope |
+| --- | --- |
+| `tests/test_database.py` | Unit tests for SQL parameter binding, result chunks, null values, truncated results, and connection failures |
+| `tests/test_api.py` | Flask route tests for registration, login, and dashboard access, plus database setup tests |
+| `tests/test_management.py` | Role permissions, restaurant isolation, menu validation, seat generation, deletion guards, and server assignment tests |
+| `frontend/src/api.test.js` | Unit tests for HTTP requests, platform authentication, Unicode credentials, cancellation, and invalid responses |
+| `frontend/src/App.test.jsx` | React component tests for registration, login, logout, and dashboard loading, errors, and empty states |
+| `frontend/src/Management.test.jsx` | Menu/table forms, assignment controls, role visibility, confirmation, and failure recovery tests |
+
+The Python tests use `unittest`; frontend tests use Vitest and React Testing Library. Database and HTTP calls are mocked, so tests need no Databricks credentials and do not access or change the live database. These local tests do not replace a check of the deployed app's permissions and database connection. As later sprints add features, add tests for each feature's expected behavior and failure cases.

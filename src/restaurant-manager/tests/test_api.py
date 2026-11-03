@@ -124,9 +124,9 @@ class ApiTests(unittest.TestCase):
         self.assertNotIn('sensitive', response.get_data(as_text=True))
 
     def test_removed_features_have_no_routes(self):
-        for path in ('/menu', '/orders', '/reports', '/assign-server', '/logout',
+        for path in ('/orders', '/reports', '/assign-server', '/logout',
                      '/menu/add', '/menu/update/1', '/menu/delete/1', '/clear-table/1',
-                     '/api/orders', '/api/menu', '/api/reports'):
+                     '/api/orders', '/api/reports'):
             for method in ('GET', 'POST'):
                 with self.subTest(path=path, method=method):
                     self.assertEqual(self.client.open(path, method=method).status_code, 404)
@@ -134,6 +134,13 @@ class ApiTests(unittest.TestCase):
 
 
 class SetupTests(unittest.TestCase):
+    @patch('setup_database.run_sql')
+    def test_setup_adds_only_the_missing_password_column(self, sql):
+        sql.side_effect = [[{'col_name': 'employee_id'}, {'col_name': 'username'}], [], []]
+        setup_database()
+        self.assertIn('ADD COLUMNS (password STRING)', sql.call_args_list[1].args[0])
+        self.assertNotIn('username STRING', sql.call_args_list[1].args[0])
+
     @patch('setup_database.run_sql')
     def test_setup_adds_missing_columns_and_assignment_table(self, sql):
         sql.side_effect = [[{'col_name': 'employee_id'}], [], []]

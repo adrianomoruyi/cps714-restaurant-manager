@@ -4,11 +4,12 @@ import os
 import re
 from pathlib import Path
 
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, abort, jsonify, request, send_from_directory
 from werkzeug.datastructures import Authorization
 from werkzeug.exceptions import HTTPException
 
 from database import FULL_SCHEMA, run_sql
+from management import register_management
 
 FRONTEND_DIST = Path(__file__).parent / 'frontend' / 'dist'
 USER_FIELDS = ('employee_id', 'restaurant_id', 'first_name', 'last_name', 'role', 'username')
@@ -53,6 +54,17 @@ def create_app(config=None):
             WHERE lower(username) = :username AND password = :password LIMIT 1""",
             {'username': username.strip().lower(), 'password': password})
         return rows[0] if rows else None
+
+    def current_employee():
+        auth = Authorization.from_header(request.headers.get('X-Restaurant-Authorization'))
+        user = authenticate(auth.username, auth.password) if auth and auth.type == 'basic' else None
+        if not user:
+            abort(401, description='Please log in to continue.')
+        if user['status'] != 'active':
+            abort(403, description='Your account is inactive. Contact your manager.')
+        return user
+
+    register_management(app, current_employee)
 
     @app.get('/api/restaurants')
     def restaurants():
@@ -110,15 +122,7 @@ def create_app(config=None):
 
     @app.get('/api/dashboard')
     def dashboard():
-        # React holds credentials in memory and sends them with this read-only request.
-        # Use a separate header so the Databricks proxy can handle Authorization.
-        # Employee login still has no Flask session or persistent browser storage.
-        auth = Authorization.from_header(request.headers.get('X-Restaurant-Authorization'))
-        user = authenticate(auth.username, auth.password) if auth and auth.type == 'basic' else None
-        if not user:
-            return jsonify(error='Please log in to continue.'), 401
-        if user['status'] != 'active':
-            return jsonify(error='Your account is inactive. Contact your manager.'), 403
+        user = current_employee()
         tables = run_sql(f"""SELECT t.table_id, t.table_number, t.capacity, t.status,
             e.first_name AS server_name
             FROM {FULL_SCHEMA}.restaurant_table t
@@ -137,6 +141,9 @@ def create_app(config=None):
     @app.get('/login')
     @app.get('/register')
     @app.get('/dashboard')
+    @app.get('/menu')
+    @app.get('/tables')
+    @app.get('/assignments')
     def frontend():
         if not (FRONTEND_DIST / 'index.html').is_file():
             return 'Build the React frontend first: cd frontend && npm ci && npm run build', 503
