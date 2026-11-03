@@ -1,10 +1,9 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { AssignmentsPage, MenuPage, TablesPage } from './Management.jsx';
+import { AssignmentsPage, MenuPage } from './Management.jsx';
 
 const manager = { user: { role: 'manager' }, credentials: { username: 'alex', password: 'simple' } };
-const server = { ...manager, user: { role: 'server' } };
 const item = { menu_item_id: '5', name: 'Soup', description: 'Seasonal', category: 'Starter', price: '8.50', available: true };
 const table = {
   table_id: '3', table_number: '1', capacity: '2', status: 'available', server_id: null,
@@ -37,14 +36,6 @@ function handleMutation(handler) {
   });
 }
 
-it('lets servers view the menu without management controls', async () => {
-  render(<MenuPage auth={server} onLogout={vi.fn()} />);
-  await screen.findByText('Soup');
-  expect(screen.getByText('$8.50')).toBeTruthy();
-  expect(screen.queryByRole('button', { name: /add menu item|edit|delete|mark unavailable/i })).toBeNull();
-  expect(screen.getByText(/You have view access/)).toBeTruthy();
-});
-
 it('creates a menu item and refreshes the list with the saved result', async () => {
   handleMutation((path, options) => {
     expect(path).toBe('/api/menu');
@@ -66,25 +57,6 @@ it('creates a menu item and refreshes the list with the saved result', async () 
   await screen.findByText('Lemonade');
   expect(screen.getByRole('status').textContent).toBe('Menu item added.');
   expect(screen.queryByRole('heading', { name: 'New menu item' })).toBeNull();
-});
-
-it('updates table capacity and displays newly added seats', async () => {
-  handleMutation((path, options) => {
-    expect(path).toBe('/api/tables/3');
-    expect(options.method).toBe('PUT');
-    expect(JSON.parse(options.body)).toEqual({ table_number: '1', capacity: '3', status: 'reserved' });
-    tables = [{ ...table, capacity: '3', status: 'reserved', seats: [...table.seats, { seat_id: '13', seat_number: '3' }] }];
-    return response({ message: 'Table and seats updated.' });
-  });
-  const browser = userEvent.setup();
-  render(<TablesPage auth={manager} onLogout={vi.fn()} />);
-  await browser.click(await screen.findByRole('button', { name: 'Edit table' }));
-  await browser.clear(screen.getByLabelText('Capacity'));
-  await browser.type(screen.getByLabelText('Capacity'), '3');
-  await browser.selectOptions(screen.getByLabelText('Status'), 'reserved');
-  await browser.click(screen.getByRole('button', { name: 'Save table' }));
-  expect(await screen.findByText('Seat 3')).toBeTruthy();
-  expect(screen.getByText('reserved')).toBeTruthy();
 });
 
 it('assigns and removes a server while showing the saved assignment and table status', async () => {

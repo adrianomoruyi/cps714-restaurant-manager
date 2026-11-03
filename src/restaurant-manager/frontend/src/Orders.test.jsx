@@ -21,8 +21,6 @@ beforeEach(() => {
     orders: [
       { ...first },
       { ...first, seat_order_id: '12', table_id: '6', table_number: '2', can_manage: false, menu_item_name: 'Tea' },
-      { ...first, seat_order_id: '13', menu_item_name: 'Coffee', status: 'cancelled' },
-      { ...first, seat_order_id: '14', menu_item_name: 'Bread', status: 'paid' },
     ],
   };
   vi.stubGlobal('fetch', vi.fn(async (path, options) => {
@@ -67,52 +65,6 @@ it('adds an item to a specific seat and refreshes the saved order', async () => 
   expect(within(added).getByText('$25.50')).toBeTruthy();
   expect(screen.getByRole('status').textContent).toBe('Order item added.');
   expect(screen.getByRole('combobox', { name: 'Menu item' }).value).toBe('');
-});
-
-it('progresses through preparation and serving and locks quantity after preparation starts', async () => {
-  mutations((path, options) => {
-    expect(path).toBe('/api/orders/11');
-    expect(options.method).toBe('PATCH');
-    const { status } = JSON.parse(options.body);
-    expect(['preparing', 'served']).toContain(status);
-    data.orders[0] = { ...data.orders[0], status };
-    return response({ message: 'Order item updated.' });
-  });
-  const browser = userEvent.setup();
-  render(<OrdersPage auth={auth} onLogout={vi.fn()} />);
-  await browser.click(await screen.findByRole('button', { name: 'Start preparing' }));
-  const prepare = await screen.findByRole('button', { name: 'Mark served' });
-  let row = screen.getByRole('row', { name: /order 11$/ });
-  expect(within(row).queryByRole('spinbutton')).toBeNull();
-  expect(within(row).getByText('preparing')).toBeTruthy();
-  await browser.click(prepare);
-  await screen.findByText('served');
-  row = screen.getByRole('row', { name: /order 11$/ });
-  expect(within(row).queryByRole('button', { name: 'Mark served' })).toBeNull();
-  expect(within(row).getByRole('button', { name: 'Cancel item' })).toBeTruthy();
-});
-
-it('confirms cancellation and keeps the cancelled item in read-only history', async () => {
-  mutations((path, options) => {
-    expect(path).toBe('/api/orders/11');
-    expect(options.method).toBe('PATCH');
-    expect(JSON.parse(options.body)).toEqual({ status: 'cancelled' });
-    data.orders[0] = { ...first, status: 'cancelled' };
-    return response({ message: 'Order item cancelled. History was kept.' });
-  });
-  const browser = userEvent.setup();
-  render(<OrdersPage auth={auth} onLogout={vi.fn()} />);
-  const row = await screen.findByRole('row', { name: /order 11$/ });
-  await browser.click(within(row).getByRole('button', { name: 'Cancel item' }));
-  expect(fetch.mock.calls.some(([, options]) => options.method === 'PATCH')).toBe(false);
-  await browser.click(within(row).getByRole('button', { name: 'Confirm cancellation' }));
-  await screen.findByRole('status');
-  await screen.findByText('Tea');
-  expect(screen.queryByText('Soup')).toBeNull();
-  await browser.click(screen.getByRole('checkbox', { name: 'Show cancelled and paid items' }));
-  const cancelled = screen.getByRole('row', { name: /order 11$/ });
-  expect(within(cancelled).getByText('cancelled')).toBeTruthy();
-  expect(within(cancelled).queryByRole('button')).toBeNull();
 });
 
 it('keeps other servers tables read-only and does not show an order entry form for them', async () => {

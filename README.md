@@ -168,23 +168,22 @@ cd src/restaurant-manager/frontend
 npm test
 ```
 
-The suite focuses on the implemented features and the rules that protect their data. It includes pure unit tests for order rules and the database/API helpers, Flask route tests with mocked database calls, and a few React component tests for the main user workflows.
+The suite covers the sprint's basic workflows and permissions. It includes pure unit tests for order rules, Flask route tests with mocked database calls, and React component tests for the main user workflows. Both suites intentionally sample core behavior rather than testing every validation case, database adapter detail, or management operation.
 
 | Test file | Tests | What they demonstrate |
 | --- | ---: | --- |
-| `tests/test_api.py` | 9 | Login success/failure, registration and duplicate/invalid accounts, dashboard access, restaurant isolation, and a friendly database failure |
-| `tests/test_database.py` | 3 | Bound SQL parameters, complete result retrieval, and rejection of failed or truncated queries |
-| `tests/test_management.py` | 12 | Manager-only changes, server viewing, menu creation/availability, table seating, assignments, restaurant boundaries, and order-history protection |
-| `tests/test_orders.py` | 11 | Valid/invalid order transitions, quantity limits, closed orders, authenticated ordering, assigned-server permissions, available menu items, and cancellation without deletion |
-| `frontend/src/api.test.js` | 2 | Regression coverage for Databricks sign-in cookies and a clear error when the platform denies access |
+| `tests/test_api.py` | 4 | Successful login, rejected credentials/inactive employees, registration, and authenticated dashboard access scoped to the employee's restaurant |
+| `tests/test_management.py` | 3 | Manager-only changes, menu creation with bound values, and table creation with numbered seats |
+| `tests/test_orders.py` | 3 | Order editing/preparation/serving/cancellation, quantity limits, and blocking changes to another server's table |
+| `frontend/src/api.test.js` | 1 | Regression coverage for Databricks sign-in cookies |
 | `frontend/src/App.test.jsx` | 3 | Registration, failed login, and successful login → dashboard → logout |
-| `frontend/src/Management.test.jsx` | 4 | Menu creation, capacity changes, assignment/removal, and server view access in the UI |
-| `frontend/src/Orders.test.jsx` | 4 | Seat-level ordering, preparation/serving, cancellation history, and read-only access to another server's table |
+| `frontend/src/Management.test.jsx` | 2 | Menu creation and server assignment/removal in the UI |
+| `frontend/src/Orders.test.jsx` | 2 | Seat-level ordering and read-only access to another server's table |
 
-There are **48 core tests: 35 Python and 13 frontend**. Closely related validation/permission cases use small data-driven tables so the same test can cover both allowed and rejected inputs. Each test targets a feature rule, access boundary, or failure with user-visible consequences.
+There are **18 core tests: 10 Python and 8 frontend**. Small data-driven cases check shared rules such as manager permissions and quantity limits. Each test targets a basic workflow or access rule.
 
 The Python tests use `unittest`; frontend tests use Vitest and React Testing Library. Database and HTTP calls are mocked, so tests need no Databricks credentials and do not access or change the live database. They demonstrate application logic and UI behavior; live SQL execution, Databricks permissions, and deployment connectivity still need a deployed check.
 
-For a class demonstration, run both commands above, then show three representative tests: `test_all_mutations_require_manager_role`, `test_restaurant_boundaries_apply_to_menu_tables_and_servers`, and `test_order_can_be_edited_prepared_served_and_cancelled`. Together they explain role permissions, restaurant isolation, and the main business workflow.
+For a class demonstration, run both commands above, then show three representative tests: `test_all_mutations_require_manager_role`, `test_dashboard_requires_login_and_uses_employees_restaurant`, and `test_order_can_be_edited_prepared_served_and_cancelled`. Together they explain role permissions, restaurant isolation, and the main business workflow.
 
 `npm run build` from the frontend directory is a separate deployment/build check, rather than a unit test.

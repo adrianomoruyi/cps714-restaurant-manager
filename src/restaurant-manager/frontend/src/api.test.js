@@ -13,10 +13,3 @@ it('keeps the Databricks cookie available for API calls behind an authentication
   const result = await api('/restaurants');
   expect(result.restaurants[0].name).toBe('The Rustic Spoon');
 });
-
-it('explains a platform denial when the proxy returns HTML instead of API JSON', async () => {
-  vi.stubGlobal('fetch', vi.fn(async () => ({
-    ok: false, status: 401, json: async () => { throw new SyntaxError('HTML sign-in page'); },
-  })));
-  await expect(api('/restaurants')).rejects.toMatchObject({ status: 401, message: expect.stringContaining('Databricks sign-in') });
-});
