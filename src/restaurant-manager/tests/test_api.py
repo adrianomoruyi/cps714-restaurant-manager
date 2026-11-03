@@ -124,9 +124,9 @@ class ApiTests(unittest.TestCase):
         self.assertNotIn('sensitive', response.get_data(as_text=True))
 
     def test_removed_features_have_no_routes(self):
-        for path in ('/orders', '/reports', '/assign-server', '/logout',
+        for path in ('/reports', '/assign-server', '/logout',
                      '/menu/add', '/menu/update/1', '/menu/delete/1', '/clear-table/1',
-                     '/api/orders', '/api/reports'):
+                     '/api/reports'):
             for method in ('GET', 'POST'):
                 with self.subTest(path=path, method=method):
                     self.assertEqual(self.client.open(path, method=method).status_code, 404)

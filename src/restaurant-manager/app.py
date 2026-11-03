@@ -10,6 +10,7 @@ from werkzeug.exceptions import HTTPException
 
 from database import FULL_SCHEMA, run_sql
 from management import register_management
+from orders import register_orders
 
 FRONTEND_DIST = Path(__file__).parent / 'frontend' / 'dist'
 USER_FIELDS = ('employee_id', 'restaurant_id', 'first_name', 'last_name', 'role', 'username')
@@ -65,6 +66,7 @@ def create_app(config=None):
         return user
 
     register_management(app, current_employee)
+    register_orders(app, current_employee)
 
     @app.get('/api/restaurants')
     def restaurants():
@@ -144,6 +146,7 @@ def create_app(config=None):
     @app.get('/menu')
     @app.get('/tables')
     @app.get('/assignments')
+    @app.get('/orders')
     def frontend():
         if not (FRONTEND_DIST / 'index.html').is_file():
             return 'Build the React frontend first: cd frontend && npm ci && npm run build', 503

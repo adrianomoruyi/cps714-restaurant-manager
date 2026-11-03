@@ -9,10 +9,10 @@ function Field({ label, name, ...props }) {
   return <label className="field"><span>{label}</span><input name={name} {...props} /></label>;
 }
 
-function Page({ title, subtitle, resource, children, canManage }) {
+export function Page({ title, subtitle, resource, children, canManage, viewNote = 'You have view access. A manager can make changes.' }) {
   return <main className="dashboard management-page">
     <div className="dashboard-heading"><div><div className="eyebrow">YOUR RESTAURANT WORKSPACE</div><h1>{title}</h1><p>{subtitle}</p></div><button className="button secondary" disabled={resource.loading || resource.busy} onClick={resource.refresh}>Refresh</button></div>
-    {!canManage && <p className="view-note">You have view access. A manager can make changes.</p>}
+    {!canManage && <p className="view-note">{viewNote}</p>}
     {resource.notice && <p className="notice" role="status">{resource.notice}</p>}
     {resource.error && <p className="error" role="alert">{resource.error}</p>}
     {resource.loadError ? <div className="error" role="alert">{resource.loadError} <button type="button" className="text-button" onClick={resource.refresh}>Try again</button></div>

@@ -84,7 +84,7 @@ describe('sprint pages', () => {
     }
   });
 
-  it.each(['/dashboard', '/menu', '/tables', '/assignments'])('requires login after a fresh visit to %s', async path => {
+  it.each(['/dashboard', '/menu', '/tables', '/assignments', '/orders'])('requires login after a fresh visit to %s', async path => {
     window.history.replaceState({}, '', path);
     render(<App />);
     await waitFor(() => expect(window.location.pathname).toBe('/login'));
@@ -97,6 +97,7 @@ describe('sprint pages', () => {
     fetch.mockImplementation(async (path, options) => {
       if (path === '/api/menu') return respond({ items: [{ menu_item_id: '5', name: 'Soup', price: '8.50', available: true }] });
       if (path === '/api/tables') return respond({ tables: [], servers: [] });
+      if (path === '/api/orders') return respond({ tables: [], items: [], orders: [] });
       return existing(path, options);
     });
     render(<App />);
@@ -111,6 +112,9 @@ describe('sprint pages', () => {
     await browser.click(screen.getByRole('link', { name: 'Server assignments' }));
     await screen.findByRole('heading', { name: 'No tables to assign' });
     expect(window.location.pathname).toBe('/assignments');
+    await browser.click(screen.getByRole('link', { name: 'Orders' }));
+    await screen.findByRole('heading', { name: 'No order items to show' });
+    expect(window.location.pathname).toBe('/orders');
     expect(screen.queryByRole('link', { name: 'Reports' })).toBeNull();
     await browser.click(screen.getByRole('link', { name: 'Dashboard' }));
     await screen.findByText('4 seats');

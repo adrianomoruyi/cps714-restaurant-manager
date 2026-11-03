@@ -140,3 +140,15 @@ tbody tr:last-child td { border-bottom: 0; }
 .assignment-form .button { min-height: 34px; padding: 8px 11px; font-size: 10px; }
 @media (max-width: 1000px) { .floor-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 650px) { .workspace-nav { gap: 22px; padding-inline: 20px; }.workspace-nav a { font-size: 11px; }.floor-grid { grid-template-columns: 1fr; }.editor-card { padding: 20px; }.editor-card .field-row { grid-template-columns: 1fr; gap: 0; }.management-page .dashboard-heading { align-items: center; }.management-page .dashboard-heading p { line-height: 1.6; max-width: 240px; } }
+
+.order-filter { display: flex; gap: 28px; align-items: center; flex-wrap: wrap; margin-bottom: 20px; }
+.order-filter .field { min-width: 230px; margin-bottom: 0; }
+.order-filter .checkbox-field { padding-bottom: 0; padding-top: 23px; }
+.order-fields { display: grid; grid-template-columns: 1fr 2fr 90px; gap: 16px; }
+.quantity-form { display: flex; align-items: center; gap: 6px; }
+.quantity-form input { width: 64px; min-height: 33px; padding: 7px 8px; background: #fff; color: #233b34; border: 1px solid #dce2da; border-radius: 7px; font-size: 12px; }
+.quantity-form .button { min-height: 33px; padding: 7px 9px; font-size: 10px; }
+.order-status.pending { background: #fbf0e4; color: #ad7c42; }
+.order-status.preparing { background: #f1edf7; color: #8c74a7; }
+.order-status.served { background: #eef5e8; color: #64804c; }
+@media (max-width: 650px) { .order-fields { grid-template-columns: 1fr; gap: 0; }.order-filter { gap: 14px; }.order-filter .field { width: 100%; }.order-filter .checkbox-field { padding-top: 0; } }

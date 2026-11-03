@@ -1,8 +1,8 @@
 # CPS714 Restaurant Manager
 
-The current app includes **registration, login, logout, a read-only dashboard, menu management, table/seat management, and server assignments**. The frontend uses React and Vite; Flask provides a JSON API backed by Databricks SQL. Managers make management changes; servers can view the menu, floor layout, and assignments.
+The current app includes **registration, login, logout, a read-only dashboard, menu management, table/seat management, server assignments, and seat-level orders**. The frontend uses React and Vite; Flask provides a JSON API backed by Databricks SQL. Managers make management changes and manage all orders in their restaurant; servers can manage orders for their assigned tables and view the menu, floor layout, and assignments.
 
-This is the first batch of the expanded scope. Orders, checkout (together or per seat), manager discounts, and employee/restaurant management are planned for later batches. Reports are excluded.
+Checkout (together or per seat), manager discounts, and employee/restaurant management are planned for later batches. Reports are excluded.
 
 ## Structure
 
@@ -10,6 +10,7 @@ This is the first batch of the expanded scope. Orders, checkout (together or per
 src/restaurant-manager/
   app.py                 Flask API and serving the built React app
   management.py          Menu, table/seat, and assignment API with role checks
+  orders.py              Order entry, quantity/status rules, and table permissions
   database.py            Databricks connection and parameterized queries
   setup_database.py      Adds the login columns and dashboard assignment table
   package.json           Databricks deployment build entry point
@@ -17,6 +18,7 @@ src/restaurant-manager/
   frontend/
     src/App.jsx          Login, registration, and dashboard components
     src/Management.jsx   Menu, tables/seats, and assignment pages
+    src/Orders.jsx       Seat-level order entry, service status, and history
     src/useRestaurantResource.js  Shared loading and saving behavior
     src/api.js           Requests to the Flask API
     src/styles.css       Responsive page styles
@@ -26,7 +28,7 @@ src/querying/            Original database and CRUD notebooks (reference)
 src/helpers/             Original operations and checkout notebook (reference)
 ```
 
-The notebooks are retained unchanged as reference. The running app adapts their menu, table, and assignment logic into Flask endpoints; it does not execute the notebooks.
+The notebooks are retained unchanged as reference. The running app adapts their menu, table, assignment, and order logic into Flask endpoints; it does not execute the notebooks.
 
 ## Management features and permissions
 
@@ -36,6 +38,7 @@ The notebooks are retained unchanged as reference. The running app adapts their 
 | Menu items | Add, edit, change availability, delete unused items | View |
 | Tables and seats | Create, resize, change table number/status, delete unused tables | View |
 | Server assignments | Assign, reassign, remove | View |
+| Order items | Add, change pending quantities, progress status, cancel at any table in the restaurant | Same actions for assigned tables; view other tables |
 
 Permissions are checked in Flask on every request, using the current employee record. All reads and changes are limited to the employee's restaurant. The classroom registration form still supports choosing manager or server, as before.
 
@@ -43,6 +46,20 @@ Permissions are checked in Flask on every request, using the current employee re
 - Tables have a unique number within a restaurant and a capacity of 1–30. Creating or editing capacity generates numbered seats from 1 to capacity. Reducing capacity removes the highest numbered seats only when the table is available and those seats have no order history. Existing seats within capacity keep their IDs.
 - Only available tables without orders or active assignments can be deleted. A table with active orders or an assignment cannot be marked available.
 - Assigning a server marks a table occupied. Only active servers from the same restaurant can be assigned. Reassignment retires the previous active assignment. Removing an assignment preserves table status; mark it available separately when service is finished.
+
+## Orders
+
+Open **Orders**, choose a table, then select its seat, an available menu item, and a quantity from 1–99. Adding an item marks the table occupied. Managers can order for any table in their restaurant; servers need the latest active assignment to that table. The backend rechecks these permissions on every change, including after reassignment.
+
+- New items start **pending**, then move to **preparing**, then **served**. Status cannot move backwards or skip preparation.
+- Quantities can be changed while an item is pending. Preparation and serving lock the quantity.
+- Any active item can be cancelled after confirmation. Cancellation preserves the record instead of deleting it.
+- Cancelled and paid items are read-only. Enable **Show cancelled and paid items** to view them. Order controls cannot mark an item paid; checkout is a later feature.
+- Existing notebook items with status `ordered` appear as pending and can enter this workflow without a bulk migration. Other unrecognized statuses are read-only history.
+- Only available items from the employee's restaurant can be added. Existing order items remain visible when their menu item becomes unavailable.
+- Unit prices and line totals reflect the current menu prices, matching the original schema. Historical price snapshots and payment records will belong to checkout.
+
+Orders use the existing `seat_order_item` table; no new database columns or notebook changes are required. The app identity needs SELECT, INSERT, and UPDATE access to the order table and UPDATE access to restaurant tables.
 
 These features use the original database tables. If starting from a new database, run the creation/population notebooks and `setup_database.py` as described below. The app identity needs SELECT access plus INSERT, UPDATE, and DELETE access for the management tables. Multi-step table and assignment changes use separate Databricks SQL statements; they do not provide transactions across tables.
 
@@ -108,7 +125,7 @@ npm ci
 npm run dev
 ```
 
-Open **http://127.0.0.1:5173**, register an account, and log in. Vite proxies API calls to Flask on port 8000. The dashboard shows tables, capacity, status, and assigned servers for the logged-in employee's restaurant. Use the navigation to open Menu, Tables & seats, and Server assignments. Register or log in as a manager to make changes; use a server account to verify view access.
+Open **http://127.0.0.1:5173**, register an account, and log in. Vite proxies API calls to Flask on port 8000. The dashboard shows tables, capacity, status, and assigned servers for the logged-in employee's restaurant. Use the navigation to open Menu, Tables & seats, Server assignments, and Orders. Log in as a manager to create tables/menu items and assign servers, then use a server account to take orders for its tables.
 
 ## Run the built app
 
@@ -159,8 +176,10 @@ The tests cover existing sprint functionality; no future-sprint features are nee
 | `tests/test_database.py` | Unit tests for SQL parameter binding, result chunks, null values, truncated results, and connection failures |
 | `tests/test_api.py` | Flask route tests for registration, login, and dashboard access, plus database setup tests |
 | `tests/test_management.py` | Role permissions, restaurant isolation, menu validation, seat generation, deletion guards, and server assignment tests |
+| `tests/test_orders.py` | Order workflow rules, quantities, cancellation, legacy statuses, restaurant isolation, and assigned-server permissions |
 | `frontend/src/api.test.js` | Unit tests for HTTP requests, platform authentication, Unicode credentials, cancellation, and invalid responses |
 | `frontend/src/App.test.jsx` | React component tests for registration, login, logout, and dashboard loading, errors, and empty states |
 | `frontend/src/Management.test.jsx` | Menu/table forms, assignment controls, role visibility, confirmation, and failure recovery tests |
+| `frontend/src/Orders.test.jsx` | Order entry, quantity edits, preparation/serving, cancellation history, table filtering, and failure recovery |
 
 The Python tests use `unittest`; frontend tests use Vitest and React Testing Library. Database and HTTP calls are mocked, so tests need no Databricks credentials and do not access or change the live database. These local tests do not replace a check of the deployed app's permissions and database connection. As later sprints add features, add tests for each feature's expected behavior and failure cases.

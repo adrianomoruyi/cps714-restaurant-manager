@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from './api.js';
 import { AssignmentsPage, MenuPage, TablesPage } from './Management.jsx';
+import { OrdersPage } from './Orders.jsx';
 
-const STAFF_PAGES = ['/dashboard', '/menu', '/tables', '/assignments'];
+const STAFF_PAGES = ['/dashboard', '/menu', '/tables', '/assignments', '/orders'];
 
 function Mark() {
   return <span className="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M5 3v5a3 3 0 0 0 6 0V3M8 3v18M19 21V3c-4 2-5 7-3 10h3" /></svg></span>;
@@ -187,10 +188,11 @@ export default function App() {
     <header className="topbar"><a className="brand" href="/dashboard" onClick={event => { event.preventDefault(); navigate('/dashboard'); }}><Mark />Restaurant Manager</a>
       <div className="account"><div className="account-info"><strong>{auth.user.first_name} {auth.user.last_name}</strong><span>{auth.user.role}</span></div><span className="avatar" aria-hidden="true">{auth.user.first_name?.charAt(0)}</span><button className="button secondary" onClick={() => logout()}>Log out</button></div>
     </header>
-    <nav className="workspace-nav" aria-label="Restaurant navigation">{[['/dashboard', 'Dashboard'], ['/menu', 'Menu'], ['/tables', 'Tables & seats'], ['/assignments', 'Server assignments']].map(([path, label]) => <a key={path} href={path} aria-current={page === path ? 'page' : undefined} onClick={event => { event.preventDefault(); navigate(path); }}>{label}</a>)}</nav>
+    <nav className="workspace-nav" aria-label="Restaurant navigation">{[['/dashboard', 'Dashboard'], ['/menu', 'Menu'], ['/tables', 'Tables & seats'], ['/assignments', 'Server assignments'], ['/orders', 'Orders']].map(([path, label]) => <a key={path} href={path} aria-current={page === path ? 'page' : undefined} onClick={event => { event.preventDefault(); navigate(path); }}>{label}</a>)}</nav>
     {page === '/menu' ? <MenuPage auth={auth} onLogout={logout} />
       : page === '/tables' ? <TablesPage auth={auth} onLogout={logout} />
       : page === '/assignments' ? <AssignmentsPage auth={auth} onLogout={logout} />
+      : page === '/orders' ? <OrdersPage auth={auth} onLogout={logout} />
       : <Dashboard auth={auth} onLogout={logout} />}
   </div>;
   return <div className="auth-shell">
