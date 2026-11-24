@@ -192,11 +192,15 @@ def register_management(app, current_employee):
             abort(409, description='That table number is already in use at your restaurant.')
         if capacity < int(table['capacity']) and table['status'] != 'available':
             abort(409, description='Make the table available before reducing its capacity.')
-        if run_sql(f'''SELECT 1 FROM {FULL_SCHEMA}.seat_order_item o
-            JOIN {FULL_SCHEMA}.seat s ON o.seat_id = s.seat_id
-            WHERE s.table_id = :table_id AND s.seat_number > :capacity LIMIT 1''',
-            {'table_id': table_id, 'capacity': capacity}):
-            abort(409, description='Seats with order history cannot be removed. Keep a larger capacity.')
+        seats = run_sql(f'SELECT seat_id, seat_number FROM {FULL_SCHEMA}.seat WHERE table_id = :table_id ORDER BY seat_number', {'table_id': table_id})
+        removing = seats[capacity:]
+        if removing:
+            if table['status'] != 'available':
+                abort(409, description='Make the table available before removing seats.')
+            ids = {f'seat_{i}': int(seat['seat_id']) for i, seat in enumerate(removing)}
+            placeholders = ', '.join(':' + key for key in ids)
+            if run_sql(f'SELECT 1 FROM {FULL_SCHEMA}.seat_order_item WHERE seat_id IN ({placeholders}) LIMIT 1', ids):
+                abort(409, description='Seats with order history cannot be removed. Keep a larger capacity.')
         if status == 'available':
             if run_sql(f'''SELECT 1 FROM {FULL_SCHEMA}.seat_order_item o
                 JOIN {FULL_SCHEMA}.seat s ON o.seat_id = s.seat_id
@@ -205,9 +209,16 @@ def register_management(app, current_employee):
             if run_sql(f'''SELECT 1 FROM {FULL_SCHEMA}.server_table_assignment
                 WHERE table_id = :table_id AND status = 'active' LIMIT 1''', {'table_id': table_id}):
                 abort(409, description='Remove the server assignment before making this table available.')
-        ensure_seats(table_id, capacity)
-        run_sql(f'DELETE FROM {FULL_SCHEMA}.seat WHERE table_id = :table_id AND seat_number > :capacity',
-                {'table_id': table_id, 'capacity': capacity})
+        if removing:
+            run_sql(f'DELETE FROM {FULL_SCHEMA}.seat WHERE seat_id IN ({placeholders}) AND table_id = :table_id', dict(table_id=table_id, **ids))
+        existing = {int(seat['seat_number']) for seat in seats[:capacity]}
+        additions = [number for number in range(1, 100) if number not in existing][:max(0, capacity - len(seats))]
+        if additions:
+            numbers = ', '.join(f'({number})' for number in additions)
+            run_sql(f'''INSERT INTO {FULL_SCHEMA}.seat (table_id, seat_number)
+                SELECT :table_id, n.seat_number FROM VALUES {numbers} AS n(seat_number)
+                WHERE NOT EXISTS (SELECT 1 FROM {FULL_SCHEMA}.seat s
+                    WHERE s.table_id = :table_id AND s.seat_number = n.seat_number)''', {'table_id': table_id})
         run_sql(f'''UPDATE {FULL_SCHEMA}.restaurant_table
             SET table_number = :table_number, capacity = :capacity, status = :status
             WHERE table_id = :table_id AND restaurant_id = :restaurant_id''',
@@ -228,6 +239,7 @@ def register_management(app, current_employee):
             abort(409, description='Remove the server assignment before deleting this table.')
         run_sql(f'DELETE FROM {FULL_SCHEMA}.seat WHERE table_id = :table_id', {'table_id': table_id})
         run_sql(f'DELETE FROM {FULL_SCHEMA}.server_table_assignment WHERE table_id = :table_id', {'table_id': table_id})
+        run_sql(f'DELETE FROM {FULL_SCHEMA}.bill_plan WHERE table_id = :table_id', {'table_id': table_id})
         run_sql(f'''DELETE FROM {FULL_SCHEMA}.restaurant_table
             WHERE table_id = :table_id AND restaurant_id = :restaurant_id''', scope(user, table_id=table_id))
         return jsonify(message='Table deleted.')
@@ -259,3 +271,60 @@ def register_management(app, current_employee):
         run_sql(f'''UPDATE {FULL_SCHEMA}.server_table_assignment SET status = 'inactive'
             WHERE table_id = :table_id AND status = 'active' ''', {'table_id': table_id})
         return jsonify(message='Server assignment removed. Table status is unchanged.')
+
+    def seats_for(table_id):
+        return run_sql(f'SELECT seat_id, seat_number FROM {FULL_SCHEMA}.seat WHERE table_id = :table_id ORDER BY seat_number', {'table_id': table_id})
+
+    def sync_capacity(user, table_id):
+        run_sql(f'''MERGE INTO {FULL_SCHEMA}.restaurant_table AS target
+            USING (SELECT CAST(COUNT(*) AS INT) AS seat_count FROM {FULL_SCHEMA}.seat
+                WHERE table_id = :table_id) AS source
+            ON target.table_id = :table_id AND target.restaurant_id = :restaurant_id
+            WHEN MATCHED THEN UPDATE SET capacity = source.seat_count''', scope(user, table_id=table_id))
+
+    @app.post('/api/tables/<int:table_id>/seats')
+    def add_seat(table_id):
+        user = employee(manager=True)
+        table_for(user, table_id)
+        number = positive_integer(body().get('seat_number'), 'Seat number', 99)
+        seats = seats_for(table_id)
+        if len(seats) >= MAX_CAPACITY:
+            abort(409, description='A table can have at most 30 seats.')
+        if any(int(seat['seat_number']) == number for seat in seats):
+            abort(409, description='That seat number is already in use at this table.')
+        run_sql(f'INSERT INTO {FULL_SCHEMA}.seat (table_id, seat_number) VALUES (:table_id, :seat_number)',
+                dict(table_id=table_id, seat_number=number))
+        sync_capacity(user, table_id)
+        return jsonify(message='Seat added and table capacity updated.'), 201
+
+    def unused_seat(user, table_id, seat_id):
+        table = table_for(user, table_id)
+        if table['status'] != 'available':
+            abort(409, description='Make the table available before renumbering or removing seats.')
+        seats = seats_for(table_id)
+        if not any(str(seat['seat_id']) == str(seat_id) for seat in seats):
+            abort(404, description='Seat not found at this table.')
+        if run_sql(f'SELECT 1 FROM {FULL_SCHEMA}.seat_order_item WHERE seat_id = :seat_id LIMIT 1', {'seat_id': seat_id}):
+            abort(409, description='Seats with order history cannot be removed or renumbered.')
+        return seats
+
+    @app.put('/api/tables/<int:table_id>/seats/<int:seat_id>')
+    def edit_seat(table_id, seat_id):
+        user = employee(manager=True)
+        number = positive_integer(body().get('seat_number'), 'Seat number', 99)
+        seats = unused_seat(user, table_id, seat_id)
+        if any(int(seat['seat_number']) == number and str(seat['seat_id']) != str(seat_id) for seat in seats):
+            abort(409, description='That seat number is already in use at this table.')
+        run_sql(f'UPDATE {FULL_SCHEMA}.seat SET seat_number = :seat_number WHERE seat_id = :seat_id AND table_id = :table_id',
+                dict(table_id=table_id, seat_id=seat_id, seat_number=number))
+        return jsonify(message='Seat number updated.')
+
+    @app.delete('/api/tables/<int:table_id>/seats/<int:seat_id>')
+    def delete_seat(table_id, seat_id):
+        user = employee(manager=True)
+        seats = unused_seat(user, table_id, seat_id)
+        if len(seats) <= 1:
+            abort(409, description='Keep at least one seat at each table.')
+        run_sql(f'DELETE FROM {FULL_SCHEMA}.seat WHERE seat_id = :seat_id AND table_id = :table_id', dict(table_id=table_id, seat_id=seat_id))
+        sync_capacity(user, table_id)
+        return jsonify(message='Seat removed and table capacity updated.')

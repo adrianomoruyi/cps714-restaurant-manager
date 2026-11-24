@@ -9,7 +9,6 @@ def setup_database():
     if missing:
         run_sql(f"ALTER TABLE {FULL_SCHEMA}.employee ADD COLUMNS ({', '.join(missing)})")
 
-    # The dashboard reads this table, originally created by the operations notebooks.
     run_sql(f'''CREATE TABLE IF NOT EXISTS {FULL_SCHEMA}.server_table_assignment (
         assignment_id BIGINT GENERATED ALWAYS AS IDENTITY,
         table_id BIGINT NOT NULL,
@@ -23,7 +22,23 @@ def setup_database():
             REFERENCES {FULL_SCHEMA}.employee (employee_id)
     ) TBLPROPERTIES ('delta.feature.allowColumnDefaults' = 'supported')''')
 
+    # One current plan per table. Missing fields in an initial MERGE use API defaults.
+    run_sql(f'''CREATE TABLE IF NOT EXISTS {FULL_SCHEMA}.bill_plan (
+        table_id BIGINT NOT NULL,
+        split_mode STRING,
+        people INT,
+        groups_json STRING,
+        discount_kind STRING,
+        discount_value DECIMAL(12,2),
+        discount_reason STRING,
+        discount_employee_id BIGINT,
+        updated_at TIMESTAMP
+    )''')
+
+    # Undo the removed role if the earlier promotion command was used.
+    run_sql(f"UPDATE {FULL_SCHEMA}.employee SET role = 'manager' WHERE role = 'admin'")
+
 
 if __name__ == '__main__':
     setup_database()
-    print('Sprint setup complete. Create an account on the registration page.')
+    print('Database setup complete.')

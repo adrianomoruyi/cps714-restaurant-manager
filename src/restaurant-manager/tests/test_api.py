@@ -38,6 +38,9 @@ class ApiTests(unittest.TestCase):
         self.sql.return_value = [{**USER, 'status': 'inactive'}]
         self.assertEqual(self.client.post('/api/login', json={'username': 'alex', 'password': 'correct'}).status_code, 403)
 
+        self.sql.return_value = [{**USER, 'role': 'admin'}]
+        self.assertEqual(self.client.post('/api/login', json={'username': 'alex', 'password': 'correct'}).status_code, 403)
+
     def registration(self):
         return dict(restaurant_id='2', first_name="O'Neil", last_name='Chen',
                     username='Alex', password='simple', role='server')

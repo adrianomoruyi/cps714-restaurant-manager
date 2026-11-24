@@ -39,7 +39,7 @@ function OrderRow({ order, resource }) {
   </tr>;
 }
 
-export function OrdersPage({ auth, onLogout }) {
+export function OrdersPage({ auth, onLogout, onSplit }) {
   const resource = useRestaurantResource('/orders', auth, onLogout);
   const [tableId, setTableId] = useState('');
   const [seatId, setSeatId] = useState('');
@@ -78,6 +78,7 @@ export function OrdersPage({ auth, onLogout }) {
       </select></label>
       <label className="checkbox-field"><input type="checkbox" checked={showHistory} onChange={event => setShowHistory(event.target.checked)} />Show cancelled and paid items</label>
     </section>
+    {onSplit && <div className="section-actions"><button className="button primary" disabled={!table} onClick={() => onSplit(tableId)}>Split bill</button></div>}
     {tables.length === 0 && <p className="notice">No tables are available yet. A manager can create them under Tables & seats.</p>}
     {!table && tables.length > 0 && orderRole && <p className="view-note">Choose a table to add an item. Managers can manage all tables; servers can manage their assigned tables.</p>}
     {table && !table.can_manage && <p className="view-note">Only a manager or this table’s assigned server can add or change its orders.</p>}

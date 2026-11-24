@@ -43,6 +43,8 @@ describe('sprint pages', () => {
     expect(screen.getByText('Unassigned')).toBeTruthy();
     expect(screen.queryByRole('button', { name: /clear|assign|order|delete/i })).toBeNull();
     expect(window.location.pathname).toBe('/dashboard');
+    expect(screen.queryByRole('link', { name: 'Employees' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Restaurant settings' })).toBeNull();
     const request = fetch.mock.calls.find(([path]) => path === '/api/dashboard')[1];
     expect(request.headers.get('X-Restaurant-Authorization')).toBe(`Basic ${btoa('alex:simple')}`);
     expect(request.headers.has('Authorization')).toBe(false);
@@ -83,4 +85,22 @@ describe('sprint pages', () => {
       expect(options.headers.has('Authorization')).toBe(false);
     }
   });
+});
+
+it('shows manager settings without a restaurant switcher', async () => {
+  fetch.mockImplementation(async (path, options) => {
+    expect(options.headers.has('X-Restaurant-ID')).toBe(false);
+    if (path === '/api/login') return respond({ user: { ...user, role: 'manager' } });
+    if (path === '/api/dashboard') return respond({ tables });
+    if (path === '/api/restaurant') return respond({ restaurant: { restaurant_id: '2', name: 'The Rustic Spoon' } });
+    throw new Error(`Unexpected request: ${path}`);
+  });
+  render(<App />);
+  const browser = await logIn();
+  await screen.findByRole('heading', { name: 'Hello, Alex.' });
+  expect(screen.getByRole('link', { name: 'Employees' })).toBeTruthy();
+  expect(screen.queryByRole('combobox', { name: 'Current restaurant' })).toBeNull();
+  await browser.click(screen.getByRole('link', { name: 'Restaurant settings' }));
+  expect(await screen.findByRole('heading', { name: 'Restaurant settings' })).toBeTruthy();
+  expect(await screen.findByRole('button', { name: 'Edit restaurant' })).toBeTruthy();
 });

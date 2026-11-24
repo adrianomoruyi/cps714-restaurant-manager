@@ -2,8 +2,10 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from './api.js';
 import { AssignmentsPage, MenuPage, TablesPage } from './Management.jsx';
 import { OrdersPage } from './Orders.jsx';
+import { BillsPage } from './Billing.jsx';
+import { EmployeesPage, RestaurantsPage } from './Administration.jsx';
 
-const STAFF_PAGES = ['/dashboard', '/menu', '/tables', '/assignments', '/orders'];
+const STAFF_PAGES = ['/dashboard', '/menu', '/tables', '/assignments', '/orders', '/bills', '/employees', '/restaurants'];
 
 function Mark() {
   return <span className="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M5 3v5a3 3 0 0 0 6 0V3M8 3v18M19 21V3c-4 2-5 7-3 10h3" /></svg></span>;
@@ -88,7 +90,7 @@ function Register({ onCreated, navigate }) {
     <p className="form-intro">Create your account to get started.</p>
     {error && <p className="error" role="alert">{error}</p>}
     {loadError && <div className="error" role="alert">{loadError} <button type="button" className="text-button" onClick={() => setAttempt(value => value + 1)}>Try again</button></div>}
-    {!loading && !loadError && restaurants.length === 0 && <p className="notice" role="status">No restaurants are available yet. Ask your project team to add one to the database.</p>}
+    {!loading && !loadError && restaurants.length === 0 && <p className="notice" role="status">No restaurants are available yet. Ask your project team to create the first restaurant in the database.</p>}
     <form onSubmit={submit}>
       <div className="field-row">
         <Field label="First name" name="first_name" autoComplete="given-name" maxLength={100} required />
@@ -159,6 +161,7 @@ export default function App() {
   const [auth, setAuth] = useState(null);
   const [notice, setNotice] = useState('');
   const [username, setUsername] = useState('');
+  const [billTableId, setBillTableId] = useState('');
 
   function navigate(path, replace = false) {
     window.history[replace ? 'replaceState' : 'pushState']({}, '', path);
@@ -176,6 +179,11 @@ export default function App() {
     if (auth && !STAFF_PAGES.includes(page)) navigate('/dashboard', true);
   }, [auth, page]);
 
+  useEffect(() => {
+    if (!auth) return;
+    if (['/restaurants', '/employees'].includes(page) && auth.user.role !== 'manager') navigate('/dashboard', true);
+  }, [auth, page]);
+
   // A stable callback keeps unrelated renders from restarting dashboard requests.
   const logout = useCallback((message = '') => {
     setAuth(null);
@@ -188,12 +196,18 @@ export default function App() {
     <header className="topbar"><a className="brand" href="/dashboard" onClick={event => { event.preventDefault(); navigate('/dashboard'); }}><Mark />Restaurant Manager</a>
       <div className="account"><div className="account-info"><strong>{auth.user.first_name} {auth.user.last_name}</strong><span>{auth.user.role}</span></div><span className="avatar" aria-hidden="true">{auth.user.first_name?.charAt(0)}</span><button className="button secondary" onClick={() => logout()}>Log out</button></div>
     </header>
-    <nav className="workspace-nav" aria-label="Restaurant navigation">{[['/dashboard', 'Dashboard'], ['/menu', 'Menu'], ['/tables', 'Tables & seats'], ['/assignments', 'Server assignments'], ['/orders', 'Orders']].map(([path, label]) => <a key={path} href={path} aria-current={page === path ? 'page' : undefined} onClick={event => { event.preventDefault(); navigate(path); }}>{label}</a>)}</nav>
-    {page === '/menu' ? <MenuPage auth={auth} onLogout={logout} />
+    <nav className="workspace-nav" aria-label="Restaurant navigation">{[['/dashboard', 'Dashboard'], ['/menu', 'Menu'], ['/tables', 'Tables & seats'], ['/assignments', 'Server assignments'], ['/orders', 'Orders'], ['/bills', 'Bills & splits'], ...(auth.user.role === 'manager' ? [['/employees', 'Employees'], ['/restaurants', 'Restaurant settings']] : [])].map(([path, label]) => <a key={path} href={path} aria-current={page === path ? 'page' : undefined} onClick={event => { event.preventDefault(); navigate(path); }}>{label}</a>)}</nav>
+    {notice && <p className="error" role="alert">{notice}</p>}
+    <div key={auth.user.restaurant_id}>
+    {page === '/restaurants' && auth.user.role === 'manager' ? <RestaurantsPage auth={auth} onLogout={logout} />
+      : page === '/employees' && auth.user.role === 'manager' ? <EmployeesPage auth={auth} onLogout={logout} />
+      : page === '/bills' ? <BillsPage auth={auth} onLogout={logout} initialTableId={billTableId} />
+      : page === '/menu' ? <MenuPage auth={auth} onLogout={logout} />
       : page === '/tables' ? <TablesPage auth={auth} onLogout={logout} />
       : page === '/assignments' ? <AssignmentsPage auth={auth} onLogout={logout} />
-      : page === '/orders' ? <OrdersPage auth={auth} onLogout={logout} />
+      : page === '/orders' ? <OrdersPage auth={auth} onLogout={logout} onSplit={tableId => { setBillTableId(tableId); navigate('/bills'); }} />
       : <Dashboard auth={auth} onLogout={logout} />}
+    </div>
   </div>;
   return <div className="auth-shell">
     <aside className="welcome-panel"><div className="brand"><Mark />Restaurant Manager</div><div className="welcome-copy"><div className="eyebrow">GOOD SERVICE STARTS HERE</div><h2>Your team.<br />Your tables.<br /><em>All together.</em></h2><p>A clear view of your restaurant,<br />so you can focus on your guests.</p><div className="floor-art" aria-hidden="true"><div className="floor-table one"><span /><span /><b>01</b><span /><span /></div><div className="floor-table two"><span /><span /><b>02</b><span /><span /></div><div className="floor-table three"><span /><span /><b>03</b><span /><span /></div></div></div><span className="welcome-footer">A little clarity for a busy floor.</span></aside>

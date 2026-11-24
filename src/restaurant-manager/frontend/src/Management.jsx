@@ -5,7 +5,7 @@ function Status({ value }) {
   return <span className={`badge ${['available', 'occupied', 'reserved'].includes(value) ? value : 'other'}`}><span className="dot" />{value}</span>;
 }
 
-function Field({ label, name, ...props }) {
+export function Field({ label, name, ...props }) {
   return <label className="field"><span>{label}</span><input name={name} {...props} /></label>;
 }
 
@@ -21,7 +21,7 @@ export function Page({ title, subtitle, resource, children, canManage, viewNote 
   </main>;
 }
 
-function DeleteButton({ label, busy, onDelete }) {
+export function DeleteButton({ label, busy, onDelete }) {
   const [confirming, setConfirming] = useState(false);
   if (!confirming) return <button className="button danger" type="button" disabled={busy} onClick={() => setConfirming(true)}>Delete</button>;
   return <span className="delete-confirm"><span>Delete {label}?</span><button className="button danger" type="button" disabled={busy} onClick={async () => { if (await onDelete()) setConfirming(false); }}>Confirm delete</button><button className="button secondary" type="button" disabled={busy} onClick={() => setConfirming(false)}>Cancel</button></span>;
@@ -33,7 +33,7 @@ export function MenuPage({ auth, onLogout }) {
   const resource = useRestaurantResource('/menu', auth, onLogout);
   const [editing, setEditing] = useState(null);
   const [adding, setAdding] = useState(false);
-  const manager = auth.user.role === 'manager';
+  const manager = (auth.user.role === 'manager');
   const items = resource.data?.items || [];
 
   async function submit(event) {
@@ -69,7 +69,8 @@ export function TablesPage({ auth, onLogout }) {
   const resource = useRestaurantResource('/tables', auth, onLogout);
   const [editing, setEditing] = useState(null);
   const [adding, setAdding] = useState(false);
-  const manager = auth.user.role === 'manager';
+  const manager = (auth.user.role === 'manager');
+  const [seatEditor, setSeatEditor] = useState(null);
   const tables = resource.data?.tables || [];
 
   async function submit(event) {
@@ -84,26 +85,27 @@ export function TablesPage({ auth, onLogout }) {
     {manager && <div className="section-actions"><button className="button primary" disabled={resource.busy} onClick={() => { setEditing(null); setAdding(true); }}>Add table</button></div>}
     {manager && (adding || editing) && <section className="editor-card" aria-labelledby="table-editor-heading">
       <h2 id="table-editor-heading">{editing ? `Edit table ${editing.table_number}` : 'New table'}</h2>
-      <p className="editor-help">Capacity creates numbered seats automatically. Reducing it removes the highest numbered seats; seats with orders are kept.</p>
+      <p className="editor-help">Increasing capacity adds seats; reducing it removes the highest numbered unused seats. Individual seat numbers are preserved when capacity stays the same. Seats with order history are protected.</p>
       <form key={editing?.table_id || 'new'} onSubmit={submit}><fieldset disabled={resource.busy}>
         <div className="field-row"><Field label="Table number" name="table_number" type="number" min="1" max="9999" step="1" defaultValue={editing?.table_number || ''} required /><Field label="Capacity" name="capacity" type="number" min="1" max="30" step="1" defaultValue={editing?.capacity || 4} required /></div>
         {editing && <label className="field"><span>Status</span><select name="status" defaultValue={editing.status}><option value="available">Available</option><option value="occupied">Occupied</option><option value="reserved">Reserved</option></select></label>}
         <div className="form-actions"><button className="button primary">{resource.busy ? 'Saving…' : 'Save table'}</button><button className="button secondary" type="button" onClick={() => { setEditing(null); setAdding(false); }}>Cancel</button></div>
       </fieldset></form>
     </section>}
+    {manager && seatEditor && <SeatEditor key={`${seatEditor.table_id}-${seatEditor.seat_id || 'new'}`} seat={seatEditor} resource={resource} onClose={() => setSeatEditor(null)} />}
     {tables.length === 0 ? <section className="table-panel panel-message empty"><h2>No tables yet</h2><p>A manager can create a table and its seats.</p></section>
       : <section className="floor-grid" aria-label="Restaurant floor">{tables.map(table => <article className="floor-card" key={table.table_id} aria-label={`Table ${table.table_number}`}>
         <div className="floor-card-heading"><h2>Table {table.table_number}</h2><Status value={table.status} /></div>
         <p>{table.capacity} seats · {table.server_first_name ? `${table.server_first_name} ${table.server_last_name || ''}`.trim() : 'Unassigned'}</p>
-        <div className="seat-list" aria-label={`Seats at table ${table.table_number}`}>{table.seats.map(seat => <span className="seat-chip" key={seat.seat_id}>Seat {seat.seat_number}</span>)}{table.seats.length === 0 && <span className="muted">No seats configured. Edit and save capacity to create them.</span>}</div>
-        {manager && <div className="row-actions"><button className="button secondary" disabled={resource.busy} onClick={() => { setEditing(table); setAdding(false); }}>Edit table</button><DeleteButton label={`table ${table.table_number}`} busy={resource.busy} onDelete={() => resource.save(`/tables/${table.table_id}`, 'DELETE')} /></div>}
+        <div className="seat-list" aria-label={`Seats at table ${table.table_number}`}>{table.seats.map(seat => <span className="seat-chip" key={seat.seat_id}>Seat {seat.seat_number}{manager && <button type="button" className="text-button" disabled={resource.busy || table.status !== 'available'} aria-label={`Edit seat ${seat.seat_number} at table ${table.table_number}`} onClick={() => setSeatEditor({ ...seat, table_id: table.table_id, table_number: table.table_number })}>Edit</button>}</span>)}{table.seats.length === 0 && <span className="muted">No seats configured. Add a seat or save the table capacity.</span>}</div>
+        {manager && <div className="row-actions"><button className="button secondary" disabled={resource.busy || table.seats.length >= 30} onClick={() => setSeatEditor({ table_id: table.table_id, table_number: table.table_number })}>Add seat</button><button className="button secondary" disabled={resource.busy} onClick={() => { setEditing(table); setAdding(false); }}>Edit table</button><DeleteButton label={`table ${table.table_number}`} busy={resource.busy} onDelete={() => resource.save(`/tables/${table.table_id}`, 'DELETE')} /></div>}
       </article>)}</section>}
   </Page>;
 }
 
 export function AssignmentsPage({ auth, onLogout }) {
   const resource = useRestaurantResource('/tables', auth, onLogout);
-  const manager = auth.user.role === 'manager';
+  const manager = (auth.user.role === 'manager');
   const tables = resource.data?.tables || [];
   const servers = resource.data?.servers || [];
 
@@ -121,4 +123,20 @@ export function AssignmentsPage({ auth, onLogout }) {
         : <div className="table-scroll"><table><thead><tr><th scope="col">Table</th><th scope="col">Status</th><th scope="col">Assigned server</th>{manager && <th scope="col">Manage assignment</th>}</tr></thead><tbody>{tables.map(table => <tr key={table.table_id}><td>Table {table.table_number}</td><td><Status value={table.status} /></td><td>{table.server_first_name ? `${table.server_first_name} ${table.server_last_name || ''}`.trim() : 'Unassigned'}</td>{manager && <td><form key={`${table.table_id}-${table.server_id || 'none'}`} className="assignment-form" onSubmit={event => submit(event, table)}><select name="employee_id" aria-label={`Server for table ${table.table_number}`} defaultValue={table.server_id || ''} required disabled={resource.busy || !servers.length}><option value="" disabled>Choose server</option>{servers.map(server => <option key={server.employee_id} value={server.employee_id}>{server.first_name} {server.last_name}</option>)}</select><button className="button primary" disabled={resource.busy || !servers.length}>{table.server_id ? 'Reassign' : 'Assign'}</button>{table.server_id && <button className="button secondary" type="button" disabled={resource.busy} onClick={() => resource.save(`/tables/${table.table_id}/assignment`, 'DELETE')}>Remove assignment</button>}</form></td>}</tr>)}</tbody></table></div>}
     </section>
   </Page>;
+}
+
+function SeatEditor({ seat, resource, onClose }) {
+  const path = `/tables/${seat.table_id}/seats${seat.seat_id ? '/' + seat.seat_id : ''}`;
+  async function submit(event) {
+    event.preventDefault();
+    if (await resource.save(path, seat.seat_id ? 'PUT' : 'POST', Object.fromEntries(new FormData(event.currentTarget)))) onClose();
+  }
+  return <section className="editor-card" aria-labelledby="seat-heading">
+    <h2 id="seat-heading">{seat.seat_id ? 'Edit seat' : 'Add seat'} · Table {seat.table_number}</h2>
+    <p className="editor-help">Seat numbers must be unique at this table. Adding or removing a seat updates capacity. Renumbering and removal require an available table and a seat without order history.</p>
+    <form onSubmit={submit}><fieldset disabled={resource.busy}>
+      <Field label="Seat number" name="seat_number" type="number" min="1" max="99" step="1" defaultValue={seat.seat_number || ''} required />
+      <div className="form-actions"><button className="button primary">Save seat</button><button className="button secondary" type="button" onClick={onClose}>Cancel</button>{seat.seat_id && <DeleteButton label={`seat ${seat.seat_number}`} busy={resource.busy} onDelete={async () => { const success = await resource.save(path, 'DELETE'); if (success) onClose(); return success; }} />}</div>
+    </fieldset></form>
+  </section>;
 }

@@ -11,6 +11,8 @@ from werkzeug.exceptions import HTTPException
 from database import FULL_SCHEMA, run_sql
 from management import register_management
 from orders import register_orders
+from administration import register_administration
+from billing import register_billing
 
 FRONTEND_DIST = Path(__file__).parent / 'frontend' / 'dist'
 USER_FIELDS = ('employee_id', 'restaurant_id', 'first_name', 'last_name', 'role', 'username')
@@ -63,10 +65,16 @@ def create_app(config=None):
             abort(401, description='Please log in to continue.')
         if user['status'] != 'active':
             abort(403, description='Your account is inactive. Contact your manager.')
+        if user['role'] not in ('manager', 'server'):
+            abort(403, description='This account must have a manager or server role.')
+        if request.headers.get('X-Restaurant-ID'):
+            abort(403, description='Use the restaurant associated with your account.')
         return user
 
     register_management(app, current_employee)
     register_orders(app, current_employee)
+    register_administration(app, current_employee)
+    register_billing(app, current_employee)
 
     @app.get('/api/restaurants')
     def restaurants():
@@ -120,6 +128,8 @@ def create_app(config=None):
             return jsonify(error='Invalid username or password.'), 401
         if user['status'] != 'active':
             return jsonify(error='Your account is inactive. Contact your manager.'), 403
+        if user['role'] not in ('manager', 'server'):
+            abort(403, description='This account must have a manager or server role.')
         return jsonify(user={field: user[field] for field in USER_FIELDS})
 
     @app.get('/api/dashboard')
@@ -147,6 +157,9 @@ def create_app(config=None):
     @app.get('/tables')
     @app.get('/assignments')
     @app.get('/orders')
+    @app.get('/bills')
+    @app.get('/employees')
+    @app.get('/restaurants')
     def frontend():
         if not (FRONTEND_DIST / 'index.html').is_file():
             return 'Build the React frontend first: cd frontend && npm ci && npm run build', 503

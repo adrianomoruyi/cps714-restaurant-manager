@@ -32,7 +32,8 @@ class ManagementTests(unittest.TestCase):
         self.auth.return_value = [{**MANAGER, 'role': 'server'}]
         endpoints = [('/api/menu', 'POST'), ('/api/menu/1', 'PUT'), ('/api/menu/1', 'DELETE'),
                      ('/api/tables', 'POST'), ('/api/tables/3', 'PUT'), ('/api/tables/3', 'DELETE'),
-                     ('/api/tables/3/assignment', 'PUT'), ('/api/tables/3/assignment', 'DELETE')]
+                     ('/api/tables/3/assignment', 'PUT'), ('/api/tables/3/assignment', 'DELETE'),
+                     ('/api/tables/3/seats', 'POST'), ('/api/tables/3/seats/11', 'PUT'), ('/api/tables/3/seats/11', 'DELETE')]
         for path, method in endpoints:
             with self.subTest(path=path, method=method):
                 self.assertEqual(self.call(path, method, {}).status_code, 403)
